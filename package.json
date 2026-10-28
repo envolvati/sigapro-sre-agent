@@ -6,12 +6,21 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "tsc && tsc-alias -f",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
     "start": "node dist/server.js",
     "digest": "tsx src/cli/digest.ts",
     "analyze": "tsx src/cli/analyze.ts"
   },
-  "keywords": ["sre", "observability", "opentelemetry", "ai-gateway", "prometheus", "tempo"],
+  "keywords": [
+    "sre",
+    "observability",
+    "opentelemetry",
+    "ai-gateway",
+    "prometheus",
+    "tempo"
+  ],
   "author": "Wilson Junior",
   "license": "ISC",
   "dependencies": {
@@ -22,6 +31,8 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "prettier": "^3.9.10",
+    "tsc-alias": "^1.9.9",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
