@@ -5,6 +5,7 @@ import { DailyDigestUseCase } from '../usecases/daily-digest.js'
 import { IncidentRCAUseCase } from '../usecases/incident-rca.js'
 import { PrometheusCollector } from '../collectors/prometheus.js'
 import { LokiCollector } from '../collectors/loki.js'
+import { AppsCollector } from '../collectors/apps.js'
 import { AIGatewayClient } from '../ai/gateway.js'
 
 interface TelegramUpdate {
@@ -31,12 +32,13 @@ export class TelegramListener {
   private readonly incidentRCA = new IncidentRCAUseCase()
   private readonly prometheus = new PrometheusCollector()
   private readonly loki = new LokiCollector()
+  private readonly apps = new AppsCollector()
   private readonly ai = new AIGatewayClient()
 
   async start() {
     this.isRunning = true
     console.log(
-      '🤖 [TelegramListener] Long polling iniciado para comandos (/health, /digest, /trace, /snapshot)...',
+      '🤖 [TelegramListener] Long polling iniciado para comandos (/apps, /app, /snapshot, /health)...',
     )
 
     while (this.isRunning) {
@@ -136,11 +138,96 @@ export class TelegramListener {
     if (cmd === '/help' || cmd === '/start') {
       const helpMsg = `🤖 *SigaPro SRE Copilot - Comandos Disponíveis:*
 
-• \`/health\` ou \`/status\` - Testa a conectividade dos monitores em tempo real
+• \`/apps\` ou \`/services\` - Painel de saúde das *Aplicações de Negócio* (Gateway, API, App)
+• \`/app <nome>\` - Detalhes de uma aplicação (\`/app payments\`, \`/app sigapro\`)
+• \`/snapshot <pergunta>\` - IA analisa métricas + logs e responde qualquer dúvida sobre os apps!
+• \`/health\` ou \`/status\` - Testa a conectividade dos monitores de infra (Prometheus, Tempo, Loki)
 • \`/digest\` - Dispara o resumo matinal (Daily SRE Digest)
-• \`/trace <trace_id>\` - Diagnostica um Trace com RCA do AI Gateway
-• \`/snapshot <sua pergunta>\` - Consulta métricas + logs e responde dúvidas sobre erros recentes`
+• \`/trace <trace_id>\` - Diagnostica um Trace com RCA do AI Gateway`
       return this.reply(chatId, helpMsg, msg.message_id, threadId)
+    }
+
+    if (cmd === '/apps' || cmd === '/services') {
+      const appReports = await this.apps.getAllApps()
+      let msgText = `📦 *Painel das Aplicações de Negócio:*\n\n`
+
+      for (const app of appReports) {
+        const icon = app.status === 'UP' ? '✅' : '❌'
+        const latency = app.latencyMs !== undefined ? `(${app.latencyMs}ms)` : ''
+        msgText += `${icon} *${app.name}*: ${app.status} ${latency}\n`
+        msgText += `   ↳ _URL_: \`${app.url}\`\n`
+
+        if (app.key === 'payments' && app.details?.workers) {
+          const workers = app.details.workers as Record<
+            string,
+            { status: string; restarts: number }
+          >
+          const runningCount = Object.values(workers).filter(w => w.status === 'running').length
+          const total = Object.keys(workers).length
+          msgText += `   ↳ _Workers_: ${runningCount}/${total} ativos\n`
+        }
+
+        if (app.recentErrors && app.recentErrors.length > 0) {
+          msgText += `   ⚠️ _Erros recentes no Loki_: ${app.recentErrors.length} ocorrência(s)\n`
+        } else if (app.key === 'sigapro-api') {
+          msgText += `   ↳ _Erros no Loki_: Nenhum nos últimos 15 min\n`
+        }
+
+        if (app.error) {
+          msgText += `   ❌ _Erro_: ${app.error}\n`
+        }
+        msgText += `\n`
+      }
+
+      return this.reply(chatId, msgText, msg.message_id, threadId)
+    }
+
+    if (cmd === '/app') {
+      const target = query.toLowerCase()
+      if (!target) {
+        return this.reply(
+          chatId,
+          '⚠️ Informe a aplicação. Exemplo: `/app payments` ou `/app sigapro`',
+          msg.message_id,
+          threadId,
+        )
+      }
+
+      let report
+      if (target.includes('pay') || target.includes('gate') || target.includes('envolv')) {
+        report = await this.apps.checkPaymentsGateway()
+      } else if (target.includes('api') || target.includes('back')) {
+        report = await this.apps.checkSigaproApi()
+      } else {
+        report = await this.apps.checkSigaproApp()
+      }
+
+      const icon = report.status === 'UP' ? '✅' : '❌'
+      let textRes = `${icon} *${report.name}*\n`
+      textRes += `• Status: *${report.status}*\n`
+      textRes += `• Latência: *${report.latencyMs ?? 0}ms*\n`
+      textRes += `• URL: \`${report.url}\`\n`
+
+      if (report.details?.workers) {
+        textRes += `\n⚙️ *Workers em Background:*\n`
+        const workers = report.details.workers as Record<
+          string,
+          { status: string; restarts: number }
+        >
+        for (const [wName, wData] of Object.entries(workers)) {
+          const wIcon = wData.status === 'running' ? '•' : '⚠️'
+          textRes += `  ${wIcon} \`${wName}\`: ${wData.status} (restarts: ${wData.restarts})\n`
+        }
+      }
+
+      if (report.recentErrors && report.recentErrors.length > 0) {
+        textRes += `\n⚠️ *Últimos Logs de Erro no Loki:*\n`
+        for (const err of report.recentErrors.slice(0, 3)) {
+          textRes += `  - \`${err.line.slice(0, 120)}...\`\n`
+        }
+      }
+
+      return this.reply(chatId, textRes, msg.message_id, threadId)
     }
 
     if (cmd === '/health' || cmd === '/status') {
@@ -196,12 +283,13 @@ export class TelegramListener {
       const userPrompt =
         query || 'Faça um snapshot geral de erros e lentidões dos últimos 15 minutos.'
 
-      const [metrics, errors] = await Promise.all([
+      const [metrics, errors, appReports] = await Promise.all([
         this.prometheus.getRecentSummary(),
         this.loki.getRecentErrors(10),
+        this.apps.getAllApps(),
       ])
 
-      const answer = await this.ai.analyzeSnapshot(userPrompt, metrics, errors)
+      const answer = await this.ai.analyzeSnapshot(userPrompt, metrics, errors, appReports)
       return this.reply(chatId, answer, msg.message_id, threadId)
     }
   }

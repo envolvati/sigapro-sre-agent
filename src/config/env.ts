@@ -17,6 +17,11 @@ const envSchema = z.object({
   TEMPO_URL: z.string().url().default('http://tempo:3200'),
   LOKI_URL: z.string().url().default('http://loki:3100'),
 
+  // Monitored Applications URLs
+  PAYMENTS_GATEWAY_URL: z.string().url().default('https://hml-payments.envolvati.com'),
+  SIGAPRO_API_URL: z.string().url().default('https://api.sigapro.com'),
+  SIGAPRO_APP_URL: z.string().url().default('https://sigapro.com'),
+
   // Telegram Notifications
   TELEGRAM_BOT_TOKEN: z.string().min(1, 'TELEGRAM_BOT_TOKEN is required'),
   TELEGRAM_CHAT_ID: z.string().min(1, 'TELEGRAM_CHAT_ID is required'),
@@ -34,6 +39,9 @@ export const env = envSchema.parse({
   PROMETHEUS_URL: process.env.PROMETHEUS_URL,
   TEMPO_URL: process.env.TEMPO_URL,
   LOKI_URL: process.env.LOKI_URL,
+  PAYMENTS_GATEWAY_URL: process.env.PAYMENTS_GATEWAY_URL,
+  SIGAPRO_API_URL: process.env.SIGAPRO_API_URL,
+  SIGAPRO_APP_URL: process.env.SIGAPRO_APP_URL,
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
   TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID,
   TELEGRAM_THREAD_ID: process.env.TELEGRAM_THREAD_ID,
