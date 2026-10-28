@@ -1,7 +1,8 @@
 import OpenAI from 'openai'
-import { env } from 'config/env'
-import type { CompactTrace } from 'collectors/tempo'
-import type { MetricsSummary } from 'collectors/prometheus'
+import { env } from '../config/env.js'
+import type { MetricsSummary } from '../collectors/prometheus.js'
+import type { CompactTrace } from '../collectors/tempo.js'
+import type { LokiLogEntry } from '../collectors/loki.js'
 
 export class AIGatewayClient {
   private readonly client: OpenAI
@@ -68,5 +69,37 @@ Seja direto, técnico e evite termos genéricos.`
     })
 
     return response.choices[0]?.message?.content ?? 'Falha ao analisar incidente com o AI Gateway.'
+  }
+
+  async analyzeSnapshot(
+    userQuestion: string,
+    metrics: MetricsSummary,
+    recentErrors: LokiLogEntry[],
+  ): Promise<string> {
+    const prompt = `Você é o SRE Copilot do Sigapro e Envolvati Payments Gateway.
+O engenheiro de plantão fez a seguinte pergunta no Telegram:
+"${userQuestion}"
+
+Aqui está o snapshot em tempo real da telemetria da nossa infraestrutura:
+1. Métricas Recentes (Prometheus):
+- Taxa de erro 5xx: ${metrics.errorRate5xx}%
+- Latência p95: ${metrics.latencyP95Seconds}s
+- Latência p99: ${metrics.latencyP99Seconds}s
+
+2. Últimos logs de erro capturados no Loki:
+${recentErrors.length > 0 ? JSON.stringify(recentErrors, null, 2) : 'Nenhum log de erro crítico registrado nos últimos 15 min.'}
+
+Diretrizes de Resposta:
+- Responda diretamente à pergunta do engenheiro.
+- Relacione com os logs reais de erro encontrados (se houver) e aponte o provável motivo ou endpoint culpado.
+- Seja técnico, objetivo e use bullet points claros.`
+
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.2,
+    })
+
+    return response.choices[0]?.message?.content ?? 'Falha ao processar snapshot com o AI Gateway.'
   }
 }
