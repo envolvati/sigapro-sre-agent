@@ -166,15 +166,25 @@ export class TelegramListener {
 
     try {
       if (cmd === '/help' || cmd === '/start') {
-        const helpMsg = `🤖 *SigaPro SRE Copilot - Comandos Disponíveis:*
+        const helpMsg = `🤖 *SigaPro SRE Copilot — Guia de Comandos*
 
-• \`/apps\` ou \`/services\` - Painel de saúde das *Aplicações de Negócio* (Gateway, API, App)
-• \`/app <nome>\` - Detalhes de uma aplicação (\`/app payments\`, \`/app sigapro\`)
-• \`/snapshot <pergunta>\` - IA analisa métricas + logs e responde qualquer dúvida sobre os apps!
-• \`/health\` ou \`/status\` - Testa a conectividade dos monitores de infra (Prometheus, Tempo, Loki)
-• \`/digest\` - Dispara o resumo matinal (Daily SRE Digest)
-• \`/trace <trace_id>\` - Diagnostica um Trace com RCA do AI Gateway`
-        return this.reply(chatId, helpMsg, msg.message_id, threadId)
+📦 *Aplicações de Negócio*
+• \`/apps\` (ou \`/services\`) — Painel consolidado das aplicações (Gateway, API e App) com tempo de resposta, workers e alertas.
+
+• \`/app <nome>\` — Raio-X detalhado de uma aplicação específica:
+   ↳ \`/app payments\` (status dos 7 workers em background)
+   ↳ \`/app sigapro\` (latência da API e erros recentes no Loki)
+
+🧠 *Diagnóstico com Inteligência Artificial*
+• \`/snapshot <sua pergunta>\` (ou \`/sre\`) — Cruza métricas do Prometheus, logs do Loki e status dos apps com o OmniRoute AI Gateway para responder qualquer dúvida técnica em linguagem natural.
+   ↳ _Ex:_ \`/snapshot a api caiu?\` ou \`/snapshot o checkout tá lento?\`
+
+• \`/trace <trace_id>\` — Busca a árvore de spans no Grafana Tempo e gera a Análise de Causa Raiz (RCA) explicando o span exato que travou.
+
+📊 *Rotinas & Telemetria*
+• \`/digest\` — Dispara sob demanda o Daily SRE Digest com o resumo executivo de uptime, taxa de erros e latência das últimas 24h.
+
+• \`/health\` (ou \`/status\`) — Testa a conectividade interna e a latência de rede da stack de observabilidade (Prometheus, Tempo, Loki e OmniRoute).`
       }
 
       if (cmd === '/apps' || cmd === '/services') {
