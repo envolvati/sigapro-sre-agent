@@ -1,0 +1,28 @@
+{
+  "name": "sigapro-sre-agent",
+  "version": "1.0.0",
+  "description": "Intelligent SRE Copilot leveraging OmniRoute AI Gateway and OpenTelemetry/Prometheus/Tempo telemetry",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "digest": "tsx src/cli/digest.ts",
+    "analyze": "tsx src/cli/analyze.ts"
+  },
+  "keywords": ["sre", "observability", "opentelemetry", "ai-gateway", "prometheus", "tempo"],
+  "author": "Wilson Junior",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^18.0.9",
+    "fastify": "^5.12.7",
+    "openai": "^7.45.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

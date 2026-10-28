@@ -1,0 +1,69 @@
+import OpenAI from 'openai';
+import { env } from '../config/env.js';
+import type { MetricsSummary } from '../collectors/prometheus.js';
+import type { CompactTrace } from '../collectors/tempo.js';
+
+export class AIGatewayClient {
+  private readonly client: OpenAI;
+  private readonly model: string;
+
+  constructor(baseURL = env.AI_GATEWAY_URL, apiKey = env.AI_GATEWAY_KEY, model = env.AI_MODEL) {
+    this.client = new OpenAI({
+      baseURL,
+      apiKey,
+    });
+    this.model = model;
+  }
+
+  async generateDailyDigest(metrics: MetricsSummary): Promise<string> {
+    const prompt = `Você é um SRE Staff Engineer responsável pela infraestrutura do Sigapro e Gateway de Pagamentos Envolvati.
+Analise os seguintes indicadores de telemetria das últimas 24h e gere um "Daily SRE Digest" para o time no Telegram.
+
+Dados de Telemetria:
+- Taxa de Erro HTTP 5xx: ${metrics.errorRate5xx}%
+- Latência p95: ${metrics.latencyP95Seconds}s
+- Latência p99: ${metrics.latencyP99Seconds}s
+
+Diretrizes:
+- Use formato conciso e profissional em Markdown com bullet points e emojis adequados.
+- Destaque o status de saúde geral do sistema (Saudável, Alerta Leve ou Crítico).
+- Forneça 1 recomendação técnica preventiva se houver qualquer desvio.
+- Mantenha a resposta com no máximo 15 linhas para leitura rápida no celular.`;
+
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.2,
+    });
+
+    return response.choices[0]?.message?.content ?? 'Falha ao gerar digest com o AI Gateway.';
+  }
+
+  async analyzeIncidentTrace(trace: CompactTrace, contextAlert = 'Alerta de Anomalia'): Promise<string> {
+    const prompt = `Você é um SRE Staff Especialista em Diagnóstico de Incidentes e Tracing Distribuído OpenTelemetry.
+O sistema disparou o seguinte alerta: "${contextAlert}".
+Analise o Trace Distribuído capturado e determine a Causa Raiz (Root Cause Analysis - RCA).
+
+Dados do Trace (Trace ID: ${trace.traceId}):
+- Duração Total: ${trace.totalDurationMs}ms
+- Spans Analisados: ${trace.spansCount}
+- Contém Erros: ${trace.hasErrors ? 'SIM' : 'NÃO'}
+
+Top Spans Críticos / Mais Lentos:
+${JSON.stringify(trace.spans, null, 2)}
+
+Diretrizes de Resposta:
+1. Resumo do Incidente (1 linha).
+2. Span Gargalo / Causa Raiz exata (identifique se a culpa foi de banco, rede externa PSP Pagarme, lock, ou erro na API).
+3. Ação Recomendada Imediata.
+Seja direto, técnico e evite termos genéricos.`;
+
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+    });
+
+    return response.choices[0]?.message?.content ?? 'Falha ao analisar incidente com o AI Gateway.';
+  }
+}
