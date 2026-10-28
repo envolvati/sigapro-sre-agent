@@ -10,8 +10,8 @@ services:
     env_file:
       - .env
     networks:
-      - monitoring-net
+      - coolify
 
 networks:
-  monitoring-net:
+  coolify:
     external: true
