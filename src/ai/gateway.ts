@@ -35,13 +35,19 @@ Diretrizes:
 - Forneça 1 recomendação técnica preventiva se houver qualquer desvio.
 - Mantenha a resposta com no máximo 15 linhas para leitura rápida no celular.`
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.2,
-    })
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+        stream: false,
+      })
 
-    return response.choices[0]?.message?.content ?? 'Falha ao gerar digest com o AI Gateway.'
+      return response.choices[0]?.message?.content ?? 'Falha ao gerar digest com o AI Gateway.'
+    } catch (err: unknown) {
+      console.error('[AIGatewayClient] Error in generateDailyDigest:', err)
+      return `❌ Erro ao consultar AI Gateway: ${err instanceof Error ? err.message : String(err)}`
+    }
   }
 
   async analyzeIncidentTrace(
@@ -66,13 +72,21 @@ Diretrizes de Resposta:
 3. Ação Recomendada Imediata.
 Seja direto, técnico e evite termos genéricos.`
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.1,
-    })
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+        stream: false,
+      })
 
-    return response.choices[0]?.message?.content ?? 'Falha ao analisar incidente com o AI Gateway.'
+      return (
+        response.choices[0]?.message?.content ?? 'Falha ao analisar incidente com o AI Gateway.'
+      )
+    } catch (err: unknown) {
+      console.error('[AIGatewayClient] Error in analyzeIncidentTrace:', err)
+      return `❌ Erro ao consultar AI Gateway: ${err instanceof Error ? err.message : String(err)}`
+    }
   }
 
   async analyzeSnapshot(
@@ -104,12 +118,20 @@ Diretrizes de Resposta:
 - Se houver workers parados ou erros no Loki, mencione exatamente o nome do worker ou o erro.
 - Seja técnico, objetivo e use bullet points claros com emojis.`
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.2,
-    })
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+        stream: false,
+      })
 
-    return response.choices[0]?.message?.content ?? 'Falha ao processar snapshot com o AI Gateway.'
+      return (
+        response.choices[0]?.message?.content ?? 'Falha ao processar snapshot com o AI Gateway.'
+      )
+    } catch (err: unknown) {
+      console.error('[AIGatewayClient] Error in analyzeSnapshot:', err)
+      return `❌ Erro ao consultar AI Gateway: ${err instanceof Error ? err.message : String(err)}`
+    }
   }
 }
