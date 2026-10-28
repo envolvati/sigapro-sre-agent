@@ -4,6 +4,7 @@
   "description": "Intelligent SRE Copilot leveraging OmniRoute AI Gateway and OpenTelemetry/Prometheus/Tempo telemetry",
   "main": "dist/server.js",
   "type": "module",
+  "packageManager": "pnpm@12.6.0",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc && tsc-alias -f",

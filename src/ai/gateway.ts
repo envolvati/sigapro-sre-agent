@@ -1,7 +1,7 @@
 import OpenAI from 'openai'
 import { env } from 'config/env'
-import type { MetricsSummary } from 'collectors/prometheus'
 import type { CompactTrace } from 'collectors/tempo'
+import type { MetricsSummary } from 'collectors/prometheus'
 
 export class AIGatewayClient {
   private readonly client: OpenAI
