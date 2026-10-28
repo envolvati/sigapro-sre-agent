@@ -1,12 +1,12 @@
-import { z } from 'zod';
-import dotenv from 'dotenv';
+import { z } from 'zod'
+import dotenv from 'dotenv'
 
-dotenv.config();
+dotenv.config()
 
 const envSchema = z.object({
   PORT: z.coerce.number().default(3030),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  
+
   // OmniRoute AI Gateway
   AI_GATEWAY_URL: z.string().url().default('https://ai.sigapro.com/v1'),
   AI_GATEWAY_KEY: z.string().min(1, 'AI_GATEWAY_KEY is required'),
@@ -21,9 +21,9 @@ const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1, 'TELEGRAM_BOT_TOKEN is required'),
   TELEGRAM_CHAT_ID: z.string().min(1, 'TELEGRAM_CHAT_ID is required'),
   TELEGRAM_THREAD_ID: z.string().optional(),
-});
+})
 
-export type Env = z.infer<typeof envSchema>;
+export type Env = z.infer<typeof envSchema>
 
 export const env = envSchema.parse({
   PORT: process.env.PORT,
@@ -37,4 +37,4 @@ export const env = envSchema.parse({
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
   TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID,
   TELEGRAM_THREAD_ID: process.env.TELEGRAM_THREAD_ID,
-});
+})
