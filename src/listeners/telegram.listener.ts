@@ -185,6 +185,7 @@ export class TelegramListener {
 • \`/digest\` — Dispara sob demanda o Daily SRE Digest com o resumo executivo de uptime, taxa de erros e latência das últimas 24h.
 
 • \`/health\` (ou \`/status\`) — Testa a conectividade interna e a latência de rede da stack de observabilidade (Prometheus, Tempo, Loki e OmniRoute).`
+        return this.reply(chatId, helpMsg, msg.message_id, threadId)
       }
 
       if (cmd === '/apps' || cmd === '/services') {
