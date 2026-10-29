@@ -1,9 +1,9 @@
 import OpenAI from 'openai'
-import { env } from '../config/env.js'
-import type { MetricsSummary } from '../collectors/prometheus.js'
-import type { CompactTrace } from '../collectors/tempo.js'
-import type { LokiLogEntry } from '../collectors/loki.js'
-import type { MonitoredAppReport } from '../collectors/apps.js'
+import { env } from 'config/env'
+import type { LokiLogEntry } from 'collectors/loki'
+import type { CompactTrace } from 'collectors/tempo'
+import type { MonitoredAppReport } from 'collectors/apps'
+import type { MetricsSummary } from 'collectors/prometheus'
 
 export class AIGatewayClient {
   private readonly client: OpenAI

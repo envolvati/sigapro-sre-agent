@@ -1,7 +1,7 @@
-import { PrometheusCollector } from '../collectors/prometheus.js'
-import { AIGatewayClient } from '../ai/gateway.js'
-import { TelegramNotifier } from '../notifiers/telegram.js'
-import { AppsCollector } from '../collectors/apps.js'
+import { AIGatewayClient } from 'ai/gateway'
+import { AppsCollector } from 'collectors/apps'
+import { TelegramNotifier } from 'notifiers/telegram'
+import { PrometheusCollector } from 'collectors/prometheus'
 
 export class DailyDigestUseCase {
   constructor(

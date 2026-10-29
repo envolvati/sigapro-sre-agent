@@ -1,4 +1,4 @@
-import { env } from '../config/env.js'
+import { env } from 'config/env'
 
 export interface ServiceHealth {
   status: 'UP' | 'DOWN'

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { env } from '../config/env.js'
+import { env } from 'config/env'
 
 export interface LokiLogEntry {
   timestamp: string

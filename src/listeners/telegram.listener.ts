@@ -1,12 +1,12 @@
+import { env } from 'config/env'
+import { AIGatewayClient } from 'ai/gateway'
+import { AppsCollector } from 'collectors/apps'
+import { LokiCollector } from 'collectors/loki'
+import { checkMonitorsHealth } from 'collectors/probe'
 import { setTimeout as sleep } from 'node:timers/promises'
-import { env } from '../config/env.js'
-import { checkMonitorsHealth } from '../collectors/probe.js'
-import { DailyDigestUseCase } from '../usecases/daily-digest.js'
-import { IncidentRCAUseCase } from '../usecases/incident-rca.js'
-import { PrometheusCollector } from '../collectors/prometheus.js'
-import { LokiCollector } from '../collectors/loki.js'
-import { AppsCollector } from '../collectors/apps.js'
-import { AIGatewayClient } from '../ai/gateway.js'
+import { DailyDigestUseCase } from 'usecases/daily-digest'
+import { IncidentRCAUseCase } from 'usecases/incident-rca'
+import { PrometheusCollector } from 'collectors/prometheus'
 
 interface TelegramUpdate {
   update_id: number

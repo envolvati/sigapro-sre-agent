@@ -1,9 +1,9 @@
 import Fastify from 'fastify'
-import { env } from './config/env.js'
-import { DailyDigestUseCase } from './usecases/daily-digest.js'
-import { IncidentRCAUseCase } from './usecases/incident-rca.js'
-import { checkMonitorsHealth } from './collectors/probe.js'
-import { TelegramListener } from './listeners/telegram.listener.js'
+import { env } from 'config/env'
+import { checkMonitorsHealth } from 'collectors/probe'
+import { DailyDigestUseCase } from 'usecases/daily-digest'
+import { IncidentRCAUseCase } from 'usecases/incident-rca'
+import { TelegramListener } from './listeners/telegram.listener'
 
 const app = Fastify({ logger: true })
 

@@ -1,5 +1,5 @@
-import { env } from '../config/env.js'
-import { LokiCollector, type LokiLogEntry } from './loki.js'
+import { env } from 'config/env'
+import { LokiCollector, type LokiLogEntry } from './loki'
 
 export interface MonitoredAppReport {
   name: string
