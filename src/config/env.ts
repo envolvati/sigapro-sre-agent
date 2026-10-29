@@ -8,19 +8,19 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
   // OmniRoute AI Gateway
-  AI_GATEWAY_URL: z.string().url().default('https://ai.sigapro.com/v1'),
+  AI_GATEWAY_URL: z.url().default('https://ai.gateway.com/v1'),
   AI_GATEWAY_KEY: z.string().min(1, 'AI_GATEWAY_KEY is required'),
   AI_MODEL: z.string().default('auto/fast'),
 
   // Observability APIs (Tempo, Prometheus, Loki)
-  PROMETHEUS_URL: z.string().url().default('http://prometheus:9090'),
-  TEMPO_URL: z.string().url().default('http://tempo:3200'),
-  LOKI_URL: z.string().url().default('http://loki:3100'),
+  PROMETHEUS_URL: z.url().default('http://prometheus:9090'),
+  TEMPO_URL: z.url().default('http://tempo:3200'),
+  LOKI_URL: z.url().default('http://loki:3100'),
 
   // Monitored Applications URLs
-  PAYMENTS_GATEWAY_URL: z.string().url().default('https://hml-payments.envolvati.com'),
-  SIGAPRO_API_URL: z.string().url().default('https://api.sigapro.com'),
-  SIGAPRO_APP_URL: z.string().url().default('https://sigapro.com'),
+  PAYMENTS_GATEWAY_URL: z.url().default('https://payments.domain.com'),
+  SIGAPRO_API_URL: z .url().default('https://api.domain.com'),
+  SIGAPRO_APP_URL: z .url().default('https://app.domain.com'),
 
   // Telegram Notifications
   TELEGRAM_BOT_TOKEN: z.string().min(1, 'TELEGRAM_BOT_TOKEN is required'),

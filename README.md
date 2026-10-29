@@ -1,6 +1,6 @@
 # 🤖 SigaPro SRE AI Agent
 
-Agente inteligente de Site Reliability Engineering (SRE) e AIOps para o ecossistema SigaPro e Envolvati Payments Gateway. O agente monitora a saúde das **Aplicações de Negócio** e da **Infraestrutura de Observabilidade**, correlaciona telemetria distribuída via **Prometheus, Grafana Tempo e Loki**, e utiliza o **OmniRoute AI Gateway (`ai.sigapro.com`)** para diagnósticos automatizados, respostas em linguagem natural e resumos executivos interativos no Telegram.
+Agente inteligente de Site Reliability Engineering (SRE) e AIOps para o ecossistema SigaPro e Envolvati Payments Gateway. O agente monitora a saúde das **Aplicações de Negócio** e da **Infraestrutura de Observabilidade**, correlaciona telemetria distribuída via **Prometheus, Grafana Tempo e Loki**, e utiliza o **OmniRoute AI Gateway (`ai.gateway.com`)** para diagnósticos automatizados, respostas em linguagem natural e resumos executivos interativos no Telegram.
 
 ---
 
@@ -51,7 +51,7 @@ flowchart TD
     ObservabilityStack <-->|Rede Docker coolify| SREAgent
     MonitoredApps <-->|Health Probes| SREAgent
 
-    SREAgent -->|RCA & Síntese Prompt| AIGateway["OmniRoute AI Gateway (ai.sigapro.com)"]
+    SREAgent -->|RCA & Síntese Prompt| AIGateway["OmniRoute AI Gateway (ai.gateway.com)"]
     AIGateway -->|Diagnóstico Estruturado| SREAgent
     SREAgent <-->|Comandos & Alertas| Telegram["📱 Canal / Tópico Telegram"]
 ```
@@ -115,7 +115,7 @@ PORT=3030
 NODE_ENV=development
 
 # OmniRoute AI Gateway (ai.sigapro.com)
-AI_GATEWAY_URL=https://ai.sigapro.com/v1
+AI_GATEWAY_URL=https://ai.gateway.com/v1
 AI_GATEWAY_KEY=sua_key_omniroute
 AI_MODEL=sre/triage-combo
 
@@ -125,9 +125,9 @@ TEMPO_URL=http://localhost:3200
 LOKI_URL=http://localhost:3100
 
 # Aplicações Monitoradas
-PAYMENTS_GATEWAY_URL=https://hml-payments.envolvati.com
-SIGAPRO_API_URL=https://api.sigapro.com
-SIGAPRO_APP_URL=https://sigapro.com
+PAYMENTS_GATEWAY_URL=https://gateway.example.com
+SIGAPRO_API_URL=https://api.example.com
+SIGAPRO_APP_URL=https://app.dasboard.com
 
 # Telegram
 TELEGRAM_BOT_TOKEN=seu_bot_token
