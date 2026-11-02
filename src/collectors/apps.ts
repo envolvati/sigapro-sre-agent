@@ -102,33 +102,71 @@ export class AppsCollector {
   }
 
   async checkSigaproApp(): Promise<MonitoredAppReport> {
-    const url = env.SIGAPRO_APP_URL
+    const baseUrl = env.SIGAPRO_APP_URL.replace(/\/$/, '')
+    const healthUrl = `${baseUrl}/api/health`
     const start = Date.now()
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+      const recentErrors = await this.loki.getRecentErrors(5)
+      const appErrors = recentErrors.filter(
+        e =>
+          e.service?.toLowerCase().includes('app') ||
+          e.line.toLowerCase().includes('sigapro-app') ||
+          e.line.toLowerCase().includes('next'),
+      )
+
+      const res = await fetch(healthUrl, { signal: AbortSignal.timeout(5000) })
       const latencyMs = Date.now() - start
-      if (res.ok || res.status === 200) {
+
+      if (res.ok) {
+        const data = (await res.json()) as {
+          status?: string
+          uptimeSeconds?: number
+          memory?: { heapUsedMB?: number; heapTotalMB?: number; rssMB?: number }
+          nodeVersion?: string
+        }
+
         return {
           name: 'SigaPro App (Frontend Next.js)',
           key: 'sigapro-app',
-          url,
+          url: healthUrl,
           status: 'UP',
           latencyMs,
+          details: {
+            uptimeSeconds: data.uptimeSeconds,
+            memory: data.memory,
+            nodeVersion: data.nodeVersion,
+          },
+          recentErrors: appErrors,
         }
       }
+
+      // Fallback para URL raiz se o endpoint ainda não estiver ativo
+      const rootRes = await fetch(baseUrl, { signal: AbortSignal.timeout(5000) })
+      if (rootRes.ok || rootRes.status === 200) {
+        return {
+          name: 'SigaPro App (Frontend Next.js)',
+          key: 'sigapro-app',
+          url: baseUrl,
+          status: 'UP',
+          latencyMs: Date.now() - start,
+          recentErrors: appErrors,
+        }
+      }
+
       return {
         name: 'SigaPro App (Frontend Next.js)',
         key: 'sigapro-app',
-        url,
+        url: healthUrl,
         status: 'DOWN',
         latencyMs,
         error: `HTTP ${res.status}: ${res.statusText}`,
+        recentErrors: appErrors,
       }
     } catch (err: unknown) {
       return {
         name: 'SigaPro App (Frontend Next.js)',
         key: 'sigapro-app',
-        url,
+        url: healthUrl,
         status: 'DOWN',
         latencyMs: Date.now() - start,
         error: err instanceof Error ? err.message : String(err),

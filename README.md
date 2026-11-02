@@ -65,7 +65,8 @@ O agente executa um **Listener Long-Polling nativo** (zero necessidade de webhoo
 | Comando | Descrição | Exemplo de Uso |
 | :--- | :--- | :--- |
 | **`/apps`** *(ou `/services`)* | Painel consolidado das **Aplicações de Negócio** (Gateway, API e App) com latência, status e contagem de workers ativos. | `/apps` |
-| **`/app <nome>`** | Raio-X individual da aplicação solicitada. Mostra os 7 workers do Gateway ou os últimos logs de erro da API. | `/app payments`<br>`/app sigapro` |
+| **`/app <nome>`** | Raio-X individual da aplicação solicitada. Mostra os 7 workers do Gateway, logs da API ou métricas de memória/latência do Frontend. | `/app payments`<br>`/app sigapro`<br>`/app front` |
+| **`/server`** *(ou `/host`)* | Diagnóstico de hardware do servidor em tempo real (CPU, Load, RAM, Disco) e lista dos Top containers consumindo memória. | `/server` |
 | **`/snapshot <pergunta>`** *(ou `/sre`)* | **Diagnóstico com IA em Linguagem Natural**: cruza métricas do Prometheus, logs do Loki e status das aplicações com o OmniRoute AI Gateway para responder qualquer dúvida técnica. | `/snapshot como tá o envolvati payments?`<br>`/snapshot a api caiu? O que os logs mostram?` |
 | **`/trace <trace_id>`** | Busca a árvore de spans no Grafana Tempo e gera a Análise de Causa Raiz (**RCA**) via IA, identificando o span culpado por timeout ou erro. | `/trace 4bf92f3577b34da6a3ce929d0e0e4736` |
 | **`/digest`** | Dispara sob demanda o **Daily SRE Digest** com o resumo executivo das últimas 24h (volume, uptime, p95 e anomalias). | `/digest` |
@@ -92,7 +93,8 @@ pnpm analyze <TRACE_ID>
 
 - `GET /health` — Retorna o JSON com o relatório de latência de cada monitor e da infraestrutura.
 - `POST /triggers/daily-digest` — Endpoint para agendadores (Cron do Coolify) dispararem o resumo diário automaticamente (ex: todo dia às 08:00 BRT).
-- `POST /webhooks/grafana` — Receptor de alertas configurável no **Grafana Alerting** ou **GlitchTip** para disparar análises automáticas de incidentes.
+- `POST /webhooks/grafana` — Receptor de alertas configurável no **Grafana Alerting** para disparar análises automáticas de incidentes.
+- `POST /webhooks/glitchtip` — Receptor de alertas proativos de crash vindos do **GlitchTip** com análise imediata de causa raiz pela IA e notificação no Telegram.
 - `POST /analyze/trace/:traceId` — Endpoint REST para solicitar análise de traces por outros microsserviços.
 
 ---
@@ -150,3 +152,9 @@ O projeto já contém `Dockerfile` multi-stage e `docker-compose.yml` pré-confi
 2. Defina o build pack como **Docker Compose**.
 3. Adicione as variáveis de ambiente de produção no painel.
 4. Execute o Deploy. O container subirá na porta `3030` conectado automaticamente à rede dos monitores.
+
+---
+
+## 📖 Runbook Operacional
+
+Para o catálogo completo de variáveis de ambiente, topologia de rede, comandos de diagnóstico via SSH e playbooks de resolução de incidentes (como falsos alertas de DOWN), consulte o **[RUNBOOK.md](./RUNBOOK.md)**.

@@ -88,6 +88,43 @@ Seja direto, técnico e evite termos genéricos.`
       return `❌ Erro ao consultar AI Gateway: ${err instanceof Error ? err.message : String(err)}`
     }
   }
+  async analyzeCrash(crashData: {
+    project?: string
+    title: string
+    culprit?: string
+    stack?: string
+    level?: string
+  }): Promise<string> {
+    const prompt = `Você é um SRE Staff Especialista em Diagnóstico de Erros e Crashes do ecossistema SigaPro e Envolvati.
+Um erro/exceção não tratada acabou de ocorrer na aplicação:
+- Projeto/Aplicação: ${crashData.project ?? 'Desconhecido'}
+- Título do Erro: ${crashData.title}
+- Ponto de Falha (Culprit): ${crashData.culprit ?? 'Não especificado'}
+- Nível: ${crashData.level ?? 'error'}
+- Stack Trace:
+${crashData.stack ?? 'Nenhuma stack trace disponível'}
+
+Diretrizes da sua Análise:
+1. Resumo do Crash (O que quebrou e impacto esperado para o usuário).
+2. Provável Causa Raiz técnica (ex: payload nulo, variável indefinida, timeout de rede, erro de banco).
+3. Sugestão exata de ação corretiva no código ou infraestrutura.
+Responda de forma concisa (máximo 12 linhas) com bullet points claros para envio no Telegram.`
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+        stream: false,
+      })
+
+      return response.choices[0]?.message?.content ?? 'Falha ao gerar diagnóstico com o AI Gateway.'
+    } catch (err: unknown) {
+      console.error('[AIGatewayClient] Error in analyzeCrash:', err)
+      return `❌ Erro ao consultar AI Gateway: ${err instanceof Error ? err.message : String(err)}`
+    }
+  }
+
 
   async analyzeSnapshot(
     userQuestion: string,

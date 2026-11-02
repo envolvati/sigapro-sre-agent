@@ -7,6 +7,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { DailyDigestUseCase } from 'usecases/daily-digest'
 import { IncidentRCAUseCase } from 'usecases/incident-rca'
 import { PrometheusCollector } from 'collectors/prometheus'
+import { ServerCollector } from 'collectors/server'
 
 interface TelegramUpdate {
   update_id: number
@@ -34,6 +35,7 @@ export class TelegramListener {
   private readonly loki = new LokiCollector()
   private readonly apps = new AppsCollector()
   private readonly ai = new AIGatewayClient()
+  private readonly server = new ServerCollector()
 
   async start() {
     this.isRunning = true
@@ -174,7 +176,10 @@ export class TelegramListener {
 • \`/app <nome>\` — Raio-X detalhado de uma aplicação específica:
    ↳ \`/app payments\` (status dos 7 workers em background)
    ↳ \`/app sigapro\` (latência da API e erros recentes no Loki)
+   ↳ \`/app front\` (latência do Next.js, memória Heap/RSS e erros no Loki)
 
+🖥️ *Infraestrutura do Servidor*
+• \`/server\` (ou \`/host\`) — Diagnóstico do servidor em tempo real (CPU, Load, RAM, Disco e Top aplicações que mais consom memória).
 🧠 *Diagnóstico com Inteligência Artificial*
 • \`/snapshot <sua pergunta>\` (ou \`/sre\`) — Cruza métricas do Prometheus, logs do Loki e status dos apps com o OmniRoute AI Gateway para responder qualquer dúvida técnica em linguagem natural.
    ↳ _Ex:_ \`/snapshot a api caiu?\` ou \`/snapshot o checkout tá lento?\`
@@ -239,6 +244,8 @@ export class TelegramListener {
           report = await this.apps.checkPaymentsGateway()
         } else if (target.includes('api') || target.includes('back')) {
           report = await this.apps.checkSigaproApi()
+        } else if (target.includes('front') || target.includes('app') || target.includes('web') || target.includes('next')) {
+          report = await this.apps.checkSigaproApp()
         } else {
           report = await this.apps.checkSigaproApp()
         }
@@ -261,6 +268,21 @@ export class TelegramListener {
           }
         }
 
+        if (report.details?.memory) {
+          const mem = report.details.memory as {
+            heapUsedMB?: number
+            heapTotalMB?: number
+            rssMB?: number
+          }
+          textRes += `\n🧠 *Memória da Instância Node.js:*\n`
+          textRes += `  • Heap Usada: \`${mem.heapUsedMB ?? 0} MB\` / \`${mem.heapTotalMB ?? 0} MB\`\n`
+          textRes += `  • RSS Total: \`${mem.rssMB ?? 0} MB\`\n`
+          if (report.details.uptimeSeconds) {
+            const uptimeMin = Math.floor(Number(report.details.uptimeSeconds) / 60)
+            textRes += `  • Uptime: \`${uptimeMin} min\`\n`
+          }
+        }
+
         if (report.recentErrors && report.recentErrors.length > 0) {
           textRes += `\n⚠️ *Últimos Logs de Erro no Loki:*\n`
           for (const err of report.recentErrors.slice(0, 3)) {
@@ -270,6 +292,31 @@ export class TelegramListener {
 
         return this.reply(chatId, textRes, msg.message_id, threadId)
       }
+      if (cmd === '/server' || cmd === '/host' || cmd === '/infra') {
+        const serverStats = await this.server.getHostMetrics()
+        let msgText = `🖥️ *Status do Servidor Host:*\n\n`
+        msgText += `⚙️ *CPU / Carga:* ${serverStats.cpuCores} núcleos\n`
+        msgText += `  • Load 1m: \`${serverStats.loadAvg['1m']}\` | 5m: \`${serverStats.loadAvg['5m']}\` | 15m: \`${serverStats.loadAvg['15m']}\`\n\n`
+
+        msgText += `🧠 *Memória RAM:* ${serverStats.memory.usedPercent}% em uso\n`
+        msgText += `  • Usada: \`${serverStats.memory.usedGB} GB\` / \`${serverStats.memory.totalGB} GB\`\n`
+        msgText += `  • Livre: \`${serverStats.memory.freeGB} GB\`\n\n`
+
+        msgText += `💾 *Disco Principal:* ${serverStats.disk.usedPercent}% em uso\n`
+        msgText += `  • Usado: \`${serverStats.disk.usedGB} GB\` / \`${serverStats.disk.totalGB} GB\`\n`
+        msgText += `  • Livre: \`${serverStats.disk.freeGB} GB\`\n`
+
+        if (serverStats.containers.length > 0) {
+          msgText += `\n📦 *Top Aplicações Consumindo RAM:*\n`
+          for (const c of serverStats.containers.slice(0, 7)) {
+            const memText = c.memoryGB >= 1 ? `${c.memoryGB} GB` : `${c.memoryMB} MB`
+            msgText += `  • \`${c.name}\`: *${memText}*\n`
+          }
+        }
+
+        return this.reply(chatId, msgText, msg.message_id, threadId)
+      }
+
 
       if (cmd === '/health' || cmd === '/status') {
         const report = await checkMonitorsHealth()
