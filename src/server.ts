@@ -66,32 +66,57 @@ app.post('/webhooks/glitchtip', async (req, reply) => {
     const body = req.body as Record<string, unknown> | null
     app.log.info({ body }, '[GlitchTip Webhook] Recebido alerta de crash')
 
+    interface SlackAttachmentField {
+      title?: string
+      value?: string
+      short?: boolean
+    }
+    interface SlackAttachment {
+      title?: string
+      title_link?: string
+      text?: string
+      fields?: SlackAttachmentField[]
+    }
+
+    const attachments = body?.attachments as SlackAttachment[] | undefined
+    const firstAttachment = attachments?.[0]
+
+    // Extrai projeto dos fields do attachment (formato Slack do GlitchTip)
+    const attachmentProject = firstAttachment?.fields?.find(
+      f => f.title?.toLowerCase() === 'project',
+    )?.value
+
     const project =
       typeof body?.project_name === 'string'
         ? body.project_name
         : typeof (body?.project as Record<string, unknown>)?.name === 'string'
           ? String((body?.project as Record<string, unknown>).name)
-          : 'SigaPro'
+          : attachmentProject ?? 'SigaPro'
 
     const issue = body?.issue as Record<string, unknown> | undefined
     const event = body?.event as Record<string, unknown> | undefined
 
     const title =
-      typeof issue?.title === 'string'
-        ? issue.title
-        : typeof event?.title === 'string'
-          ? event.title
-          : typeof body?.text === 'string'
-            ? body.text
-            : 'Exceção não tratada capturada pelo GlitchTip'
+      typeof firstAttachment?.title === 'string'
+        ? firstAttachment.title
+        : typeof issue?.title === 'string'
+          ? issue.title
+          : typeof event?.title === 'string'
+            ? event.title
+            : typeof body?.text === 'string'
+              ? body.text
+              : 'Exceção não tratada capturada pelo GlitchTip'
 
     const culprit =
-      typeof issue?.culprit === 'string'
-        ? issue.culprit
-        : typeof event?.culprit === 'string'
-          ? event.culprit
-          : undefined
+      typeof firstAttachment?.text === 'string'
+        ? firstAttachment.text
+        : typeof issue?.culprit === 'string'
+          ? issue.culprit
+          : typeof event?.culprit === 'string'
+            ? event.culprit
+            : undefined
 
+    const link = firstAttachment?.title_link
     const level = typeof event?.level === 'string' ? event.level : 'error'
 
     let stack: string | undefined
@@ -121,8 +146,10 @@ app.post('/webhooks/glitchtip', async (req, reply) => {
       level,
     })
 
-    const alertMessage = `🚨 *[Crash Proativo Detectado]*\n*Aplicação:* \`${project}\`\n*Erro:* ${title}\n${culprit ? `*Local:* \`${culprit}\`\n` : ''}\n${rca}`
-
+    let alertMessage = `🚨 *[Crash Proativo Detectado]*\n*Aplicação:* \`${project}\`\n*Erro:* ${title}\n`
+    if (culprit) alertMessage += `*Local:* \`${culprit}\`\n`
+    if (link) alertMessage += `*Issue GlitchTip:* [Ver detalhes da Issue](${link})\n`
+    alertMessage += `\n${rca}`
     await telegramNotifier.sendMessage(alertMessage)
 
     return reply.status(200).send({ success: true, delivered: true })
