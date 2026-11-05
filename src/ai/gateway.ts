@@ -18,6 +18,27 @@ export class AIGatewayClient {
   }
 
   async generateDailyDigest(metrics: MetricsSummary, apps?: MonitoredAppReport[]): Promise<string> {
+    const compactApps = apps?.map(app => {
+      const item: Record<string, unknown> = {
+        name: app.name,
+        status: app.status,
+        latencyMs: app.latencyMs,
+      }
+      if (app.error) {
+        item.error = app.error
+      }
+      if (app.recentErrors && app.recentErrors.length > 0) {
+        item.recentErrors = app.recentErrors.map(e => ({
+          timestamp: e.timestamp,
+          message: e.line.length > 180 ? `${e.line.slice(0, 180)}...` : e.line,
+        }))
+      }
+      if (app.details) {
+        item.details = app.details
+      }
+      return item
+    })
+
     const prompt = `Você é um SRE Staff Engineer responsável pela infraestrutura do Sigapro e Gateway de Pagamentos Envolvati.
 Analise os seguintes indicadores de telemetria das últimas 24h e gere um "Daily SRE Digest" para o time no Telegram.
 
@@ -27,9 +48,7 @@ Dados de Telemetria:
 - Latência p99: ${metrics.latencyP99Seconds}s
 
 Status das Aplicações Monitoradas:
-${apps ? JSON.stringify(apps, null, 2) : 'Não informado'}
-
-Diretrizes:
+${compactApps ? JSON.stringify(compactApps, null, 2) : 'Não informado'}
 - Use formato conciso e profissional em Markdown com bullet points e emojis adequados.
 - Destaque o status de saúde geral do sistema e das aplicações individuais (Payments Gateway, API, App).
 - Forneça 1 recomendação técnica preventiva se houver qualquer desvio.

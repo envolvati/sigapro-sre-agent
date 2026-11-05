@@ -1,8 +1,8 @@
-FROM node:23-alpine AS builder
+FROM node:26-alpine AS builder
 
 WORKDIR /app
 
-RUN npm install -g pnpm@12.6.0
+RUN npm install -g pnpm@12.16.1
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* tsconfig.json ./
 RUN pnpm install --frozen-lockfile
@@ -10,11 +10,11 @@ RUN pnpm install --frozen-lockfile
 COPY src ./src
 RUN pnpm build
 
-FROM node:23-alpine AS runner
+FROM node:26-alpine AS runner
 
 WORKDIR /app
 
-RUN npm install -g pnpm@12.6.0
+RUN npm install -g pnpm@12.16.1
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
 RUN pnpm install --prod --frozen-lockfile

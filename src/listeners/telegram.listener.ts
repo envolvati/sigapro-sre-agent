@@ -45,10 +45,10 @@ export class TelegramListener {
 
     while (this.isRunning) {
       try {
-        const url = `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${this.offset}&timeout=25`
-        const res = await fetch(url)
+        const url = `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${this.offset}&timeout=20`
+        const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
         if (!res.ok) {
-          await sleep(5000)
+          await sleep(3000)
           continue
         }
 
@@ -64,11 +64,16 @@ export class TelegramListener {
           }
         }
       } catch (err: unknown) {
-        console.warn(
-          '[TelegramListener] Polling error, retrying in 5s...',
-          err instanceof Error ? err.message : err,
-        )
-        await sleep(5000)
+        const isTimeout =
+          err instanceof Error &&
+          (err.name === 'TimeoutError' || err.message?.toLowerCase().includes('timeout'))
+        if (!isTimeout) {
+          console.warn(
+            '[TelegramListener] Polling error, retrying in 3s...',
+            err instanceof Error ? err.message : err,
+          )
+        }
+        await sleep(3000)
       }
     }
   }

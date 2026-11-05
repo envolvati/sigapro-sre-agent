@@ -21,6 +21,12 @@ export class AppsCollector {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
       const latencyMs = Date.now() - start
+      const recentErrors = await this.loki.getRecentErrors(5, '.*payments.*')
+      const paymentsErrors = recentErrors.filter(
+        e =>
+          e.service?.toLowerCase().includes('payments') ||
+          e.line.toLowerCase().includes('payments-gateway'),
+      )
       if (res.ok) {
         const data = (await res.json()) as {
           status: string
@@ -37,6 +43,7 @@ export class AppsCollector {
             healthy: data.healthy,
             workers: data.workers,
           },
+          recentErrors: paymentsErrors,
         }
       }
       return {
@@ -46,6 +53,7 @@ export class AppsCollector {
         status: 'DOWN',
         latencyMs,
         error: `HTTP ${res.status}: ${res.statusText}`,
+        recentErrors: paymentsErrors,
       }
     } catch (err: unknown) {
       return {
@@ -55,6 +63,7 @@ export class AppsCollector {
         status: 'DOWN',
         latencyMs: Date.now() - start,
         error: err instanceof Error ? err.message : String(err),
+        recentErrors: [],
       }
     }
   }
@@ -65,9 +74,9 @@ export class AppsCollector {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
       const latencyMs = Date.now() - start
-      const recentErrors = await this.loki.getRecentErrors(5)
+      const recentErrors = await this.loki.getRecentErrors(5, 'sigapro-api.*')
       const apiErrors = recentErrors.filter(
-        e => e.service?.toLowerCase().includes('sigapro') || e.service === 'unknown_service',
+        e => e.service?.toLowerCase().includes('api') || e.service?.toLowerCase().includes('sigapro'),
       )
 
       if (res.ok || res.status === 200 || res.status === 404) {
@@ -106,7 +115,7 @@ export class AppsCollector {
     const healthUrl = `${baseUrl}/api/health`
     const start = Date.now()
     try {
-      const recentErrors = await this.loki.getRecentErrors(5)
+      const recentErrors = await this.loki.getRecentErrors(5, 'sigapro-app.*')
       const appErrors = recentErrors.filter(
         e =>
           e.service?.toLowerCase().includes('app') ||
