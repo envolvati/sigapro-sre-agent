@@ -18,7 +18,8 @@ const envSchema = z.object({
   LOKI_URL: z.url().default('http://loki:3100'),
 
   // Monitored Applications URLs
-  PAYMENTS_GATEWAY_URL: z.url().default('https://payments.domain.com'),
+  PAYMENTS_GATEWAY_URL: z.string().default('https://payments.envolvati.com'),
+  PAYMENTS_GATEWAY_HML_URL: z.string().default('https://hml-payments.envolvati.com'),
   SIGAPRO_API_URL: z .url().default('https://api.domain.com'),
   SIGAPRO_APP_URL: z .url().default('https://app.domain.com'),
 
@@ -39,7 +40,8 @@ export const env = envSchema.parse({
   PROMETHEUS_URL: process.env.PROMETHEUS_URL,
   TEMPO_URL: process.env.TEMPO_URL,
   LOKI_URL: process.env.LOKI_URL,
-  PAYMENTS_GATEWAY_URL: process.env.PAYMENTS_GATEWAY_URL,
+  PAYMENTS_GATEWAY_URL: process.env.PAYMENTS_GATEWAY_URL || 'https://payments.envolvati.com',
+  PAYMENTS_GATEWAY_HML_URL: process.env.PAYMENTS_GATEWAY_HML_URL || 'https://hml-payments.envolvati.com',
   SIGAPRO_API_URL: process.env.SIGAPRO_API_URL,
   SIGAPRO_APP_URL: process.env.SIGAPRO_APP_URL,
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,

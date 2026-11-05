@@ -208,7 +208,7 @@ export class TelegramListener {
           msgText += `${icon} *${app.name}*: ${app.status} ${latency}\n`
           msgText += `   ↳ _URL_: \`${app.url}\`\n`
 
-          if (app.key === 'payments' && app.details?.workers) {
+          if (app.key?.startsWith('payments') && app.details?.workers) {
             const workers = app.details.workers as Record<
               string,
               { status: string; restarts: number }
@@ -246,7 +246,8 @@ export class TelegramListener {
 
         let report
         if (target.includes('pay') || target.includes('gate') || target.includes('envolv')) {
-          report = await this.apps.checkPaymentsGateway()
+          const isHml = target.includes('hml') || target.includes('stag')
+          report = await this.apps.checkPaymentsGateway(isHml ? 'hml' : 'prod')
         } else if (target.includes('api') || target.includes('back')) {
           report = await this.apps.checkSigaproApi()
         } else if (target.includes('front') || target.includes('app') || target.includes('web') || target.includes('next')) {
