@@ -12,6 +12,33 @@ export interface BuildTriageAnalysis {
   culpritFiles: string[]
   harnessPrompt: string
 }
+
+export interface PRAuditInput {
+  repository: string
+  pullNumber: number
+  title: string
+  body?: string
+  author?: string
+  baseBranch: string
+  headBranch: string
+  changedFilesCount?: number
+  changedFiles?: string[]
+}
+
+export interface PRAuditResult {
+  isApproved: boolean
+  score: number
+  verdict: 'APPROVED' | 'NEEDS_WORK' | 'INCOMPLETE'
+  summary: string
+  checks: {
+    titleConvention: { pass: boolean; feedback: string }
+    problemDescription: { pass: boolean; feedback: string }
+    validationEvidence: { pass: boolean; feedback: string }
+    checklistAndScope: { pass: boolean; feedback: string }
+  }
+  missingItems: string[]
+  commentMarkdown: string
+}
 export class AIGatewayClient {
   private readonly client: OpenAI
   private readonly model: string
@@ -150,6 +177,97 @@ Diretrizes:
       }
     }
   }
+  async auditPullRequest(input: PRAuditInput): Promise<PRAuditResult> {
+    const prompt = `Você é o SRE & Quality Gatekeeper da Envolva TI.
+Sua missão é auditar a descrição e a conformidade técnica do Pull Request #${input.pullNumber} no repositório "${input.repository}" (${input.headBranch} -> ${input.baseBranch}) aberto por @${input.author ?? 'desconhecido'}.
+
+Título do PR:
+"${input.title}"
+
+Corpo da Descrição do PR:
+"""
+${input.body || '(Sem descrição fornecida)'}
+"""
+
+Arquivos alterados no PR (${input.changedFilesCount ?? input.changedFiles?.length ?? 0} arquivos):
+${input.changedFiles ? input.changedFiles.slice(0, 30).join('\n') : 'Não informado'}
+
+Régua de Rigor da Envolva TI:
+1. Padrão de Título: Deve seguir estritamente Conventional Commits: tipo(escopo): descrição (ex: fix(subscriptions): ..., feat(docker): ...).
+2. Descrição da Motivação: Deve explicar o que estava quebrado ou o objetivo da mudança de forma clara.
+3. Evidências de Validação (Obrigatório):
+   - Não basta marcar apenas "[x] Testes" ou "[x] Lint". Deve haver comprovação textual explícita (ex: número de testes passando, comando executado, confirmação de typecheck/tsc sem erros, build limpo).
+   - Se nenhuma evidência textual foi anexada, a validação REPROVA (verdict: NEEDS_WORK).
+4. Escopo & Dependências:
+   - Se arquivos de dependências (package.json, pnpm-lock.yaml, go.mod, Dockerfile) foram alterados, o PR deve citar a atualização de dependências/runtime.
+
+Retorne estritamente em formato JSON:
+{
+  "isApproved": boolean (true apenas se tiver evidências e seguir as convenções),
+  "score": number (0 a 100),
+  "verdict": "APPROVED" | "NEEDS_WORK" | "INCOMPLETE",
+  "summary": "Resumo de 1 frase da avaliação",
+  "checks": {
+    "titleConvention": { "pass": boolean, "feedback": "string explicativa" },
+    "problemDescription": { "pass": boolean, "feedback": "string explicativa" },
+    "validationEvidence": { "pass": boolean, "feedback": "string explicativa" },
+    "checklistAndScope": { "pass": boolean, "feedback": "string explicativa" }
+  },
+  "missingItems": ["Item 1 que falta", "Item 2 que falta"],
+  "commentMarkdown": "Comentário completo e elegante em Markdown para ser postado diretamente no GitHub PR, cumprimentando o autor com @username, listando os pontos verificados com emojis (✅/⚠️/❌) e explicando objetivamente o que precisa ser ajustado para aprovação."
+}
+
+Diretrizes de Tom:
+- Seja profissional, construtivo, incentivador e direto ao ponto.
+- Retorne APENAS o JSON puro, sem blocos markdown externos.`
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+        stream: false,
+      })
+
+      const rawContent = response.choices[0]?.message?.content ?? '{}'
+      const jsonStr = rawContent.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+      const parsed = JSON.parse(jsonStr) as Partial<PRAuditResult>
+
+      return {
+        isApproved: Boolean(parsed.isApproved),
+        score: typeof parsed.score === 'number' ? parsed.score : parsed.isApproved ? 100 : 50,
+        verdict: parsed.verdict || (parsed.isApproved ? 'APPROVED' : 'NEEDS_WORK'),
+        summary: parsed.summary || 'Avaliação de conformidade de PR concluída.',
+        checks: parsed.checks || {
+          titleConvention: { pass: true, feedback: 'Título aceito.' },
+          problemDescription: { pass: true, feedback: 'Descrição aceita.' },
+          validationEvidence: { pass: Boolean(parsed.isApproved), feedback: 'Evidências avaliadas.' },
+          checklistAndScope: { pass: true, feedback: 'Checklist verificado.' },
+        },
+        missingItems: Array.isArray(parsed.missingItems) ? parsed.missingItems : [],
+        commentMarkdown:
+          parsed.commentMarkdown ||
+          `🤖 **SigaPro PR Gatekeeper**\n\nPR #${input.pullNumber} avaliado. Status: ${parsed.isApproved ? '✅ Aprovado' : '⚠️ Pendências de evidência'}.`,
+      }
+    } catch (err: unknown) {
+      console.error('[AIGatewayClient] Error in auditPullRequest:', err)
+      return {
+        isApproved: false,
+        score: 0,
+        verdict: 'NEEDS_WORK',
+        summary: 'Falha ao executar auditoria via AI Gateway.',
+        checks: {
+          titleConvention: { pass: false, feedback: 'Não avaliado' },
+          problemDescription: { pass: false, feedback: 'Não avaliado' },
+          validationEvidence: { pass: false, feedback: 'Não avaliado' },
+          checklistAndScope: { pass: false, feedback: 'Não avaliado' },
+        },
+        missingItems: ['Serviço de IA temporariamente indisponível para validação automática'],
+        commentMarkdown: `🤖 **SigaPro PR Gatekeeper**\n\n⚠️ Não foi possível auditar o PR #${input.pullNumber} automaticamente neste momento.`,
+      }
+    }
+  }
+
 
 
   async analyzeIncidentTrace(

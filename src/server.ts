@@ -4,9 +4,10 @@ import { checkMonitorsHealth } from 'collectors/probe'
 import { DailyDigestUseCase } from 'usecases/daily-digest'
 import { IncidentRCAUseCase } from 'usecases/incident-rca'
 import { HandleCoolifyWebhookUseCase, type CoolifyWebhookPayload } from 'usecases/handle-coolify-webhook'
+import { AuditPullRequestUseCase } from 'usecases/audit-pull-request'
 import { DeploymentsCollector } from 'collectors/deployments'
 import { TelegramListener } from './listeners/telegram.listener'
-import { AIGatewayClient } from './ai/gateway'
+import { AIGatewayClient, type PRAuditInput } from './ai/gateway'
 import { TelegramNotifier } from './notifiers/telegram'
 
 const app = Fastify({ logger: true })
@@ -14,6 +15,7 @@ const app = Fastify({ logger: true })
 const dailyDigest = new DailyDigestUseCase()
 const incidentRCA = new IncidentRCAUseCase()
 const coolifyWebhook = new HandleCoolifyWebhookUseCase()
+const auditPullRequest = new AuditPullRequestUseCase()
 const telegramListener = new TelegramListener()
 const aiGateway = new AIGatewayClient()
 const telegramNotifier = new TelegramNotifier()
@@ -229,6 +231,61 @@ app.post('/analyze/build-failure', async (req, reply) => {
     })
 
     return reply.status(200).send(triage)
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    return reply.status(500).send({ error: errorMsg })
+  }
+})
+
+// Webhook do GitHub para auditoria de Pull Requests
+app.post('/webhooks/github', async (req, reply) => {
+  try {
+    const event = req.headers['x-github-event']
+    const body = req.body as Record<string, unknown> | null
+
+    if (event === 'pull_request' && body && typeof body === 'object') {
+      const action = body.action as string
+      if (action === 'opened' || action === 'edited' || action === 'synchronize') {
+        const pr = body.pull_request as Record<string, unknown> | undefined
+        const repo = body.repository as Record<string, unknown> | undefined
+        const fullName = typeof repo?.full_name === 'string' ? repo.full_name : ''
+
+        if (pr && fullName) {
+          const result = await auditPullRequest.execute({
+            repository: fullName,
+            pullNumber: typeof pr.number === 'number' ? pr.number : 0,
+            title: typeof pr.title === 'string' ? pr.title : '',
+            body: typeof pr.body === 'string' ? pr.body : '',
+            author: (pr.user as Record<string, unknown> | undefined)?.login as string | undefined,
+            baseBranch: (pr.base as Record<string, unknown> | undefined)?.ref as string || 'main',
+            headBranch: (pr.head as Record<string, unknown> | undefined)?.ref as string || 'staging',
+            changedFilesCount: typeof pr.changed_files === 'number' ? pr.changed_files : undefined,
+          })
+          return reply.status(200).send(result)
+        }
+      }
+    }
+
+    return reply.status(200).send({ status: 'ignored' })
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    app.log.error(err, '[GitHub Webhook] Erro ao processar PR')
+    return reply.status(500).send({ error: errorMsg })
+  }
+})
+
+// Endpoint para auditoria sob demanda de PRs
+app.post('/analyze/pr', async (req, reply) => {
+  try {
+    const body = req.body as PRAuditInput
+    if (!body?.repository || !body?.pullNumber || !body?.title) {
+      return reply.status(400).send({
+        error: 'Campos obrigatórios ausentes: repository, pullNumber e title são necessários.',
+      })
+    }
+
+    const result = await auditPullRequest.execute(body)
+    return reply.status(200).send(result)
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err)
     return reply.status(500).send({ error: errorMsg })
