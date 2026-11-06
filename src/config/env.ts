@@ -27,6 +27,11 @@ const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1, 'TELEGRAM_BOT_TOKEN is required'),
   TELEGRAM_CHAT_ID: z.string().min(1, 'TELEGRAM_CHAT_ID is required'),
   TELEGRAM_THREAD_ID: z.string().optional(),
+  TELEGRAM_RELEASES_THREAD_ID: z.string().default('284'),
+
+  // Coolify Integration
+  COOLIFY_API_URL: z.string().default('https://infra.sigapro.com/api/v1'),
+  COOLIFY_API_TOKEN: z.string().optional(),
 })
 
 export type Env = z.infer<typeof envSchema>
@@ -47,4 +52,7 @@ export const env = envSchema.parse({
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
   TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID,
   TELEGRAM_THREAD_ID: process.env.TELEGRAM_THREAD_ID,
+  TELEGRAM_RELEASES_THREAD_ID: process.env.TELEGRAM_RELEASES_THREAD_ID || '284',
+  COOLIFY_API_URL: process.env.COOLIFY_API_URL || 'https://infra.sigapro.com/api/v1',
+  COOLIFY_API_TOKEN: process.env.COOLIFY_API_TOKEN,
 })

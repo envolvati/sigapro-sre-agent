@@ -4,7 +4,14 @@ import type { LokiLogEntry } from 'collectors/loki'
 import type { CompactTrace } from 'collectors/tempo'
 import type { MonitoredAppReport } from 'collectors/apps'
 import type { MetricsSummary } from 'collectors/prometheus'
+import type { DeploymentEvent } from 'collectors/deployments'
 
+export interface BuildTriageAnalysis {
+  summary: string
+  rootCause: string
+  culpritFiles: string[]
+  harnessPrompt: string
+}
 export class AIGatewayClient {
   private readonly client: OpenAI
   private readonly model: string
@@ -17,7 +24,11 @@ export class AIGatewayClient {
     this.model = model
   }
 
-  async generateDailyDigest(metrics: MetricsSummary, apps?: MonitoredAppReport[]): Promise<string> {
+  async generateDailyDigest(
+    metrics: MetricsSummary,
+    apps?: MonitoredAppReport[],
+    recentDeploys?: DeploymentEvent[],
+  ): Promise<string> {
     const compactApps = apps?.map(app => {
       const item: Record<string, unknown> = {
         name: app.name,
@@ -49,11 +60,25 @@ Dados de Telemetria:
 
 Status das Aplicações Monitoradas:
 ${compactApps ? JSON.stringify(compactApps, null, 2) : 'Não informado'}
+
+Histórico de Deploys Recentes (CI/CD):
+${
+  recentDeploys && recentDeploys.length > 0
+    ? recentDeploys
+        .map(
+          d =>
+            `- [${d.status}] ${d.application} (${d.environment}) commit: ${d.commit ?? 'HEAD'} autor: ${d.author ?? 'desconhecido'} (${d.timestamp})`,
+        )
+        .join('\n')
+    : 'Nenhum deploy recente registrado'
+}
+
+Diretrizes:
 - Use formato conciso e profissional em Markdown com bullet points e emojis adequados.
 - Destaque o status de saúde geral do sistema e das aplicações individuais (Payments Gateway, API, App).
+- Correlacione anomalias de latência ou taxa de erro com deploys recentes se aplicável.
 - Forneça 1 recomendação técnica preventiva se houver qualquer desvio.
 - Mantenha a resposta com no máximo 15 linhas para leitura rápida no celular.`
-
     try {
       const response = await this.client.chat.completions.create({
         model: this.model,
@@ -68,6 +93,64 @@ ${compactApps ? JSON.stringify(compactApps, null, 2) : 'Não informado'}
       return `❌ Erro ao consultar AI Gateway: ${err instanceof Error ? err.message : String(err)}`
     }
   }
+  async triageBuildFailure(params: {
+    application: string
+    environment: string
+    branch?: string
+    commit?: string
+    author?: string
+    logs: string
+  }): Promise<BuildTriageAnalysis> {
+    const prompt = `Você é um SRE Staff Engineer especialista em diagnóstico de pipelines CI/CD e compilações de software (Docker, Node.js, NestJS, Next.js, Go, pnpm).
+O build de deploy falhou na aplicação "${params.application}" (${params.environment}) no commit "${params.commit ?? 'desconhecido'}" por "${params.author ?? 'desconhecido'}".
+
+Logs do build:
+"""
+${params.logs.slice(-3500)}
+"""
+
+Analise os logs e produza uma triagem técnica e cirúrgica em formato JSON estrito:
+{
+  "summary": "Resumo de 1 linha da falha (ex: Erro de compilação TypeScript TS2339 no DTO de assinaturas)",
+  "rootCause": "Explicação técnica de 1-2 frases identificando o porquê da falha",
+  "culpritFiles": ["caminho/do/arquivo:linha (se identificado nos logs)"],
+  "harnessPrompt": "Instrução auto-contida e direta para o desenvolvedor copiar e colar no assistente de IA local (Cursor, Claude, Harness) para aplicar a correção imediata"
+}
+
+Diretrizes:
+- Seja extremamente específico: aponte o arquivo exato e linha com erro se constarem nos logs.
+- No "harnessPrompt", escreva exatamente a instrução que você daria para o seu assistente de código local consertar o arquivo.
+- Retorne APENAS o JSON puro, sem markdown ao redor.`
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+        stream: false,
+      })
+
+      const rawContent = response.choices[0]?.message?.content ?? '{}'
+      const jsonStr = rawContent.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+      const parsed = JSON.parse(jsonStr) as Partial<BuildTriageAnalysis>
+
+      return {
+        summary: parsed.summary || 'Falha na compilação do build',
+        rootCause: parsed.rootCause || 'O processo de build falhou com código de erro não-zero.',
+        culpritFiles: Array.isArray(parsed.culpritFiles) ? parsed.culpritFiles : [],
+        harnessPrompt: parsed.harnessPrompt || `Investigue e corrija o erro de build no commit ${params.commit ?? 'recente'}: ${params.logs.slice(-300)}`,
+      }
+    } catch (err: unknown) {
+      console.error('[AIGatewayClient] Error in triageBuildFailure:', err)
+      return {
+        summary: 'Falha na compilação do build',
+        rootCause: 'Não foi possível analisar os logs via AI Gateway.',
+        culpritFiles: [],
+        harnessPrompt: `O deploy da aplicação ${params.application} falhou com o seguinte erro:\n${params.logs.slice(-500)}`,
+      }
+    }
+  }
+
 
   async analyzeIncidentTrace(
     trace: CompactTrace,

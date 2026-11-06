@@ -8,6 +8,7 @@ import { DailyDigestUseCase } from 'usecases/daily-digest'
 import { IncidentRCAUseCase } from 'usecases/incident-rca'
 import { PrometheusCollector } from 'collectors/prometheus'
 import { ServerCollector } from 'collectors/server'
+import { DeploymentsCollector } from 'collectors/deployments'
 
 interface TelegramUpdate {
   update_id: number
@@ -183,6 +184,7 @@ export class TelegramListener {
    ↳ \`/app sigapro\` (latência da API e erros recentes no Loki)
    ↳ \`/app front\` (latência do Next.js, memória Heap/RSS e erros no Loki)
 
+• \`/deploys\` (ou \`/releases\`) — Histórico dos últimos deploys realizados pelo Coolify com status e autor.
 🖥️ *Infraestrutura do Servidor*
 • \`/server\` (ou \`/host\`) — Diagnóstico do servidor em tempo real (CPU, Load, RAM, Disco e Top aplicações que mais consom memória).
 🧠 *Diagnóstico com Inteligência Artificial*
@@ -231,6 +233,28 @@ export class TelegramListener {
         }
 
         return this.reply(chatId, msgText, msg.message_id, threadId)
+      }
+      if (cmd === '/deploys' || cmd === '/releases') {
+        const list = DeploymentsCollector.getInstance().getRecentDeployments(5)
+        if (list.length === 0) {
+          return this.reply(
+            chatId,
+            '📦 *Histórico de Deploys:* Nenhum deploy recente registrado nesta sessão.',
+            msg.message_id,
+            threadId,
+          )
+        }
+
+        let text = `📦 *Últimos Deploys Registrados (CI/CD):*\n\n`
+        for (const d of list) {
+          const icon = d.status === 'SUCCESS' ? '🚀' : '🔴'
+          text += `${icon} *${d.application}* (${d.environment})\n`
+          if (d.commit) text += `   ↳ _Commit_: \`${d.commit}\` por ${d.author ?? 'desconhecido'}\n`
+          if (d.triage?.summary) text += `   ↳ _Diagnóstico_: ${d.triage.summary}\n`
+          text += `   ↳ _Hora_: ${d.timestamp}\n\n`
+        }
+
+        return this.reply(chatId, text, msg.message_id, threadId)
       }
 
       if (cmd === '/app') {

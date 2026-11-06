@@ -3,6 +3,8 @@ import { env } from 'config/env'
 import { checkMonitorsHealth } from 'collectors/probe'
 import { DailyDigestUseCase } from 'usecases/daily-digest'
 import { IncidentRCAUseCase } from 'usecases/incident-rca'
+import { HandleCoolifyWebhookUseCase, type CoolifyWebhookPayload } from 'usecases/handle-coolify-webhook'
+import { DeploymentsCollector } from 'collectors/deployments'
 import { TelegramListener } from './listeners/telegram.listener'
 import { AIGatewayClient } from './ai/gateway'
 import { TelegramNotifier } from './notifiers/telegram'
@@ -11,6 +13,7 @@ const app = Fastify({ logger: true })
 
 const dailyDigest = new DailyDigestUseCase()
 const incidentRCA = new IncidentRCAUseCase()
+const coolifyWebhook = new HandleCoolifyWebhookUseCase()
 const telegramListener = new TelegramListener()
 const aiGateway = new AIGatewayClient()
 const telegramNotifier = new TelegramNotifier()
@@ -168,6 +171,68 @@ app.post('/analyze/trace/:traceId', async (req, reply) => {
     traceId,
   })
   return reply.status(result.success ? 200 : 500).send(result)
+})
+
+// Webhook de CI/CD para eventos de deploy do Coolify
+app.post('/webhooks/coolify', async (req, reply) => {
+  try {
+    const body = req.body as CoolifyWebhookPayload
+    app.log.info({ event: body?.event, app: body?.application_name }, '[Coolify Webhook] Recebido')
+    const result = await coolifyWebhook.execute(body)
+    return reply.status(200).send(result)
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    app.log.error(err, '[Coolify Webhook] Falha ao processar')
+    return reply.status(500).send({ success: false, error: errorMsg })
+  }
+})
+
+// Endpoint para triagem sob demanda de falhas de build com geração de prompt para o Harness
+app.post('/analyze/build-failure', async (req, reply) => {
+  try {
+    const body = req.body as {
+      application: string
+      environment?: string
+      commit?: string
+      author?: string
+      branch?: string
+      logs: string
+    }
+
+    if (!body?.logs) {
+      return reply.status(400).send({ error: 'Campo "logs" é obrigatório.' })
+    }
+
+    const triage = await aiGateway.triageBuildFailure({
+      application: body.application || 'App',
+      environment: body.environment || 'staging',
+      commit: body.commit,
+      author: body.author,
+      branch: body.branch,
+      logs: body.logs,
+    })
+    DeploymentsCollector.getInstance().recordDeployment({
+      id: String(Date.now()),
+      application: body.application || 'App',
+      environment: body.environment || 'staging',
+      commit: body.commit,
+      author: body.author,
+      branch: body.branch,
+      status: 'FAILED',
+      timestamp: new Date().toISOString(),
+      triage: {
+        summary: triage.summary,
+        rootCause: triage.rootCause,
+        culpritFiles: triage.culpritFiles,
+        harnessPrompt: triage.harnessPrompt,
+      },
+    })
+
+    return reply.status(200).send(triage)
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    return reply.status(500).send({ error: errorMsg })
+  }
 })
 
 const start = async () => {

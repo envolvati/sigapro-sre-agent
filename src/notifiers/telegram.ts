@@ -15,19 +15,23 @@ export class TelegramNotifier {
     this.threadId = threadId
   }
 
-  async sendMessage(text: string): Promise<boolean> {
+  async sendMessage(
+    text: string,
+    options?: { threadId?: string | number; parseMode?: 'Markdown' | 'HTML' },
+  ): Promise<boolean> {
     try {
       const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`
+      const targetThread = options?.threadId !== undefined ? options.threadId : this.threadId
       const body: Record<string, unknown> = {
         chat_id: this.chatId,
         text,
-        parse_mode: 'Markdown',
+        parse_mode: options?.parseMode ?? 'Markdown',
       }
 
-      if (this.threadId) {
-        body.message_thread_id = parseInt(this.threadId, 10)
+      if (targetThread) {
+        body.message_thread_id =
+          typeof targetThread === 'number' ? targetThread : parseInt(targetThread, 10)
       }
-
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
