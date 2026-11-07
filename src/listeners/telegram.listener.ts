@@ -9,6 +9,13 @@ import { IncidentRCAUseCase } from 'usecases/incident-rca'
 import { PrometheusCollector } from 'collectors/prometheus'
 import { ServerCollector } from 'collectors/server'
 import { DeploymentsCollector } from 'collectors/deployments'
+import {
+  GitHubCollector,
+  REPO_ALIASES,
+  MONITORED_REPOSITORIES,
+  formatAuthorTag,
+} from 'collectors/github'
+import { AuditPullRequestUseCase } from 'usecases/audit-pull-request'
 
 interface TelegramUpdate {
   update_id: number
@@ -37,6 +44,8 @@ export class TelegramListener {
   private readonly apps = new AppsCollector()
   private readonly ai = new AIGatewayClient()
   private readonly server = new ServerCollector()
+  private readonly github = new GitHubCollector()
+  private readonly auditPR = new AuditPullRequestUseCase()
 
   async start() {
     this.isRunning = true
@@ -185,6 +194,11 @@ export class TelegramListener {
    ↳ \`/app front\` (latência do Next.js, memória Heap/RSS e erros no Loki)
 
 • \`/deploys\` (ou \`/releases\`) — Histórico dos últimos deploys realizados pelo Coolify com status e autor.
+
+🚀 *Pull Requests & CI/CD*
+• \`/prs\` (ou \`/pulls\`) — Lista PRs abertos no backend, frontend e payments com status de evidências.
+• \`/pr <repo> <numero>\` (ou \`/audit\`) — Raio-X e re-auditoria de qualidade de um PR com diagnóstico e checklist.
+   ↳ _Ex:_ \`/pr api 117\` ou \`/pr front 240\`
 🖥️ *Infraestrutura do Servidor*
 • \`/server\` (ou \`/host\`) — Diagnóstico do servidor em tempo real (CPU, Load, RAM, Disco e Top aplicações que mais consom memória).
 🧠 *Diagnóstico com Inteligência Artificial*
@@ -255,6 +269,122 @@ export class TelegramListener {
         }
 
         return this.reply(chatId, text, msg.message_id, threadId)
+      }
+      if (cmd === '/prs' || cmd === '/pulls') {
+        await this.sendTyping(chatId, threadId)
+        let msgText = `📋 *Pull Requests Abertos na Envolva TI:*\n\n`
+        let totalCount = 0
+
+        for (const target of MONITORED_REPOSITORIES) {
+          const pulls = await this.github.listOpenPullRequests(target.repo)
+          if (pulls.length > 0) {
+            msgText += `📦 *${target.name}* (\`${target.alias}\`):\n`
+            for (const p of pulls) {
+              totalCount++
+              const authorTag = formatAuthorTag(p.author)
+              let statusLabel = '⚠️ Pendente'
+              if (p.labels.includes('status: ready-for-review')) {
+                statusLabel = '✅ Pronto'
+              } else if (p.draft) {
+                statusLabel = '📝 Draft'
+              }
+              msgText += `  • *#${p.number}:* [${p.title}](${p.url})\n`
+              msgText += `    ↳ Autor: ${authorTag} | Status: *${statusLabel}*\n`
+            }
+            msgText += `\n`
+          }
+        }
+
+        if (totalCount === 0) {
+          return this.reply(
+            chatId,
+            '✅ *Nenhum Pull Request aberto* nos repositórios monitorados!',
+            msg.message_id,
+            threadId,
+          )
+        }
+
+        msgText += `💡 _Dica: Digite \`/pr <repo> <numero>\` para ver a auditoria de qualidade detalhada de um PR._`
+        return this.reply(chatId, msgText, msg.message_id, threadId)
+      }
+
+      if (cmd === '/pr' || cmd === '/audit') {
+        const parts = query.trim().split(/\s+/)
+        if (!query.trim() || parts.length === 0) {
+          return this.reply(
+            chatId,
+            '⚠️ *Informe o repositório e o número do PR.*\n\nExemplos:\n• `/pr api 117`\n• `/pr front 240`\n• `/pr pay 10`',
+            msg.message_id,
+            threadId,
+          )
+        }
+
+        let repoKey = 'api'
+        let prNumStr = parts[0]
+
+        if (parts.length >= 2) {
+          repoKey = parts[0].toLowerCase()
+          prNumStr = parts[1]
+        }
+
+        const repoFullName =
+          REPO_ALIASES[repoKey] || (repoKey.includes('/') ? repoKey : 'envolvati/sigapro-api')
+        const prNumber = parseInt(prNumStr.replace('#', ''), 10)
+
+        if (isNaN(prNumber) || prNumber <= 0) {
+          return this.reply(
+            chatId,
+            `❌ Número de PR inválido: "${prNumStr}". Exemplo correto: \`/pr api 117\``,
+            msg.message_id,
+            threadId,
+          )
+        }
+
+        await this.sendTyping(chatId, threadId)
+        const prDetails = await this.github.getPullRequest(repoFullName, prNumber)
+        if (!prDetails) {
+          return this.reply(
+            chatId,
+            `❌ Não foi possível encontrar o PR #${prNumber} em \`${repoFullName}\` no GitHub.`,
+            msg.message_id,
+            threadId,
+          )
+        }
+
+        const files = await this.github.getPullFiles(repoFullName, prNumber)
+
+        const audit = await this.auditPR.execute({
+          repository: repoFullName,
+          pullNumber: prDetails.number,
+          title: prDetails.title,
+          body: prDetails.body,
+          author: prDetails.author,
+          baseBranch: prDetails.baseBranch,
+          headBranch: prDetails.headBranch,
+          changedFilesCount: prDetails.changedFilesCount,
+          changedFiles: files,
+        })
+
+        const statusIcon = audit.isApproved ? '✅' : '⚠️'
+        const verdictLabel = audit.isApproved ? 'APROVADO' : 'PENDENTE DE EVIDÊNCIAS'
+        const authorTag = formatAuthorTag(prDetails.author)
+
+        let replyText = `🤖 *[PR GATEKEEPER] Raio-X do PR #${prNumber}*\n\n`
+        replyText += `📦 *Repositório:* \`${repoFullName}\`\n`
+        replyText += `👤 *Autor:* ${authorTag}\n`
+        replyText += `🔖 *Título:* \`${prDetails.title}\`\n\n`
+        replyText += `🎯 *Veredito:* ${statusIcon} *${verdictLabel}* (Nota: ${audit.score}/100)\n`
+        replyText += `📝 *Resumo:* ${audit.summary}\n`
+
+        if (audit.missingItems && audit.missingItems.length > 0) {
+          replyText += `\n⚠️ *O que precisa ser ajustado:*\n`
+          for (const item of audit.missingItems) {
+            replyText += `• ${item}\n`
+          }
+          replyText += `\n👀 ${authorTag}, dê uma olhada no feedback acima!`
+        }
+
+        return this.reply(chatId, replyText, msg.message_id, threadId)
       }
 
       if (cmd === '/app') {

@@ -1,6 +1,7 @@
 import { env } from 'config/env'
 import { AIGatewayClient, type PRAuditInput, type PRAuditResult } from 'ai/gateway'
 import { TelegramNotifier } from 'notifiers/telegram'
+import { formatAuthorTag } from 'collectors/github'
 
 export class AuditPullRequestUseCase {
   constructor(
@@ -25,9 +26,10 @@ export class AuditPullRequestUseCase {
     const statusEmoji = audit.isApproved ? '✅' : '⚠️'
     const verdictText = audit.isApproved ? 'APROVADO' : 'PENDENTE DE EVIDÊNCIAS'
 
+    const authorTag = formatAuthorTag(input.author)
     let text = `🤖 *[PR GATEKEEPER] PR #${input.pullNumber} Auditado*\n\n`
     text += `📦 *Repositório:* \`${input.repository}\` (\`${input.headBranch}\` → \`${input.baseBranch}\`)\n`
-    if (input.author) text += `👤 *Autor:* @${input.author}\n`
+    if (input.author) text += `👤 *Autor:* ${authorTag}\n`
     text += `🔖 *Título:* \`${input.title}\`\n\n`
     text += `🎯 *Veredito:* ${statusEmoji} *${verdictText}* (Nota: ${audit.score}/100)\n`
     text += `📝 *Resumo:* ${audit.summary}\n`
@@ -37,6 +39,7 @@ export class AuditPullRequestUseCase {
       for (const item of audit.missingItems) {
         text += `• ${item}\n`
       }
+      text += `\n👀 ${authorTag}, dê uma olhada nas pendências acima e atualize a descrição do PR!\n`
     }
 
     text += `\n🔗 [Ver Pull Request no GitHub](https://github.com/${input.repository}/pull/${input.pullNumber})\n`
