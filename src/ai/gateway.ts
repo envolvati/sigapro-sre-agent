@@ -158,7 +158,12 @@ Diretrizes:
       })
 
       const rawContent = response.choices[0]?.message?.content ?? '{}'
-      const jsonStr = rawContent.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+      const firstBrace = rawContent.indexOf('{')
+      const lastBrace = rawContent.lastIndexOf('}')
+      const jsonStr =
+        firstBrace !== -1 && lastBrace !== -1
+          ? rawContent.slice(firstBrace, lastBrace + 1)
+          : rawContent.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
       const parsed = JSON.parse(jsonStr) as Partial<BuildTriageAnalysis>
 
       return {
@@ -230,7 +235,12 @@ Diretrizes de Tom:
       })
 
       const rawContent = response.choices[0]?.message?.content ?? '{}'
-      const jsonStr = rawContent.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+      const firstBrace = rawContent.indexOf('{')
+      const lastBrace = rawContent.lastIndexOf('}')
+      const jsonStr =
+        firstBrace !== -1 && lastBrace !== -1
+          ? rawContent.slice(firstBrace, lastBrace + 1)
+          : rawContent.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
       const parsed = JSON.parse(jsonStr) as Partial<PRAuditResult>
 
       return {
