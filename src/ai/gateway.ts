@@ -51,6 +51,37 @@ export class AIGatewayClient {
     this.model = model
   }
 
+  private async createCompletionWithFallback(
+    messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+    temperature = 0.1,
+  ): Promise<string> {
+    const modelsToTry = [this.model, 'kc/openrouter/free', 'kilocode/openrouter/free']
+    let lastError: unknown
+
+    for (const model of modelsToTry) {
+      try {
+        const response = await this.client.chat.completions.create({
+          model,
+          messages,
+          temperature,
+          stream: false,
+        })
+        const content = response.choices[0]?.message?.content ?? ''
+        if (content && !content.toLowerCase().includes('no longer supported')) {
+          return content
+        }
+        console.warn(
+          `[AIGatewayClient] Model ${model} returned unsupported upstream response, falling back...`,
+        )
+      } catch (err: unknown) {
+        lastError = err
+        console.warn(`[AIGatewayClient] Model ${model} failed, falling back: ${err}`)
+      }
+    }
+
+    throw lastError || new Error('All AI models failed to generate completion')
+  }
+
   async generateDailyDigest(
     metrics: MetricsSummary,
     apps?: MonitoredAppReport[],
@@ -107,14 +138,11 @@ Diretrizes:
 - Forneça 1 recomendação técnica preventiva se houver qualquer desvio.
 - Mantenha a resposta com no máximo 15 linhas para leitura rápida no celular.`
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.2,
-        stream: false,
-      })
-
-      return response.choices[0]?.message?.content ?? 'Falha ao gerar digest com o AI Gateway.'
+      const content = await this.createCompletionWithFallback(
+        [{ role: 'user', content: prompt }],
+        0.2,
+      )
+      return content || 'Falha ao gerar digest com o AI Gateway.'
     } catch (err: unknown) {
       console.error('[AIGatewayClient] Error in generateDailyDigest:', err)
       return `❌ Erro ao consultar AI Gateway: ${err instanceof Error ? err.message : String(err)}`
@@ -150,14 +178,10 @@ Diretrizes:
 - Retorne APENAS o JSON puro, sem markdown ao redor.`
 
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
-        stream: false,
-      })
-
-      const rawContent = response.choices[0]?.message?.content ?? '{}'
+      const rawContent = await this.createCompletionWithFallback(
+        [{ role: 'user', content: prompt }],
+        0.1,
+      )
       const firstBrace = rawContent.indexOf('{')
       const lastBrace = rawContent.lastIndexOf('}')
       const jsonStr =
@@ -227,14 +251,10 @@ Diretrizes de Tom:
 - Retorne APENAS o JSON puro, sem blocos markdown externos.`
 
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
-        stream: false,
-      })
-
-      const rawContent = response.choices[0]?.message?.content ?? '{}'
+      const rawContent = await this.createCompletionWithFallback(
+        [{ role: 'user', content: prompt }],
+        0.1,
+      )
       const firstBrace = rawContent.indexOf('{')
       const lastBrace = rawContent.lastIndexOf('}')
       const jsonStr =
