@@ -40,12 +40,23 @@ export class TelegramNotifier {
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error(
-          `[TelegramNotifier] Failed to send message (${response.status}): ${errorText}`,
+        console.warn(
+          `[TelegramNotifier] Failed with parse_mode (${response.status}): ${errorText}. Retrying without parse_mode...`,
         )
-        return false
+        delete body.parse_mode
+        const retryRes = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (!retryRes.ok) {
+          const retryText = await retryRes.text()
+          console.error(
+            `[TelegramNotifier] Retry without parse_mode failed (${retryRes.status}): ${retryText}`,
+          )
+          return false
+        }
       }
-
       return true
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)

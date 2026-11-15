@@ -47,6 +47,8 @@ export class AIGatewayClient {
     this.client = new OpenAI({
       baseURL,
       apiKey,
+      maxRetries: 1,
+      timeout: 60_000,
     })
     this.model = model
   }
@@ -55,7 +57,7 @@ export class AIGatewayClient {
     messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     temperature = 0.1,
   ): Promise<string> {
-    const modelsToTry = [this.model, 'kc/openrouter/free', 'kilocode/openrouter/free']
+    const modelsToTry = [...new Set([this.model, 'kc/openrouter/free', 'kilocode/openrouter/free'])]
     let lastError: unknown
 
     for (const model of modelsToTry) {
@@ -323,16 +325,12 @@ Diretrizes de Resposta:
 Seja direto, técnico e evite termos genéricos.`
 
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
-        stream: false,
-      })
-
-      return (
-        response.choices[0]?.message?.content ?? 'Falha ao analisar incidente com o AI Gateway.'
+      const content = await this.createCompletionWithFallback(
+        [{ role: 'user', content: prompt }],
+        0.1,
       )
+
+      return content || 'Falha ao analisar incidente com o AI Gateway.'
     } catch (err: unknown) {
       console.error('[AIGatewayClient] Error in analyzeIncidentTrace:', err)
       return `❌ Erro ao consultar AI Gateway: ${err instanceof Error ? err.message : String(err)}`
@@ -361,14 +359,12 @@ Diretrizes da sua Análise:
 Responda de forma concisa (máximo 12 linhas) com bullet points claros para envio no Telegram.`
 
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
-        stream: false,
-      })
+      const content = await this.createCompletionWithFallback(
+        [{ role: 'user', content: prompt }],
+        0.1,
+      )
 
-      return response.choices[0]?.message?.content ?? 'Falha ao gerar diagnóstico com o AI Gateway.'
+      return content || 'Falha ao gerar diagnóstico com o AI Gateway.'
     } catch (err: unknown) {
       console.error('[AIGatewayClient] Error in analyzeCrash:', err)
       return `❌ Erro ao consultar AI Gateway: ${err instanceof Error ? err.message : String(err)}`
@@ -406,16 +402,12 @@ Diretrizes de Resposta:
 - Seja técnico, objetivo e use bullet points claros com emojis.`
 
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.2,
-        stream: false,
-      })
-
-      return (
-        response.choices[0]?.message?.content ?? 'Falha ao processar snapshot com o AI Gateway.'
+      const content = await this.createCompletionWithFallback(
+        [{ role: 'user', content: prompt }],
+        0.2,
       )
+
+      return content || 'Falha ao processar snapshot com o AI Gateway.'
     } catch (err: unknown) {
       console.error('[AIGatewayClient] Error in analyzeSnapshot:', err)
       return `❌ Erro ao consultar AI Gateway: ${err instanceof Error ? err.message : String(err)}`

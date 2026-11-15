@@ -6,13 +6,13 @@ Este documento é o guia de referência operacional para manter, configurar e di
 
 ## 🎯 Visão Geral do Serviço
 
-* **Nome no Coolify:** `sigapro-sre-agent`
-* **UUID do Recurso no Coolify:** `8r5ajcud3ckolxggk9vsnliz`
+* **Nome no host:** `sigapro-sre-agent`
+* **UUID do Recurso no host:** `8r5ajcud3ckolxggk9vsnliz`
 * **Projeto / Ambiente:** `Sigapro` / `monitor`
 * **Repositório Git:** `https://github.com/envolvati/sigapro-sre-agent`
 * **Branch de Deploy:** `main`
 * **Porta Interna:** `3030`
-* **Rede Docker:** `coolify` (rede externa compartilhada)
+* **Rede Docker:** `docker` (rede externa compartilhada)
 
 ---
 
@@ -20,7 +20,7 @@ Este documento é o guia de referência operacional para manter, configurar e di
 
 ```mermaid
 flowchart LR
-    subgraph CoolifyBridge["Rede Docker Interna (coolify)"]
+    subgraph CoolifyBridge["Rede Docker Interna (docker)"]
         SREAgent["sigapro-sre-agent (:3030)"]
         Prometheus["prometheus:9090"]
         Tempo["tempo:3200"]
@@ -60,18 +60,18 @@ flowchart LR
 | :--- | :---: | :--- | :--- |
 | **`PORT`** | Não | `3030` | Porta onde o servidor Fastify responde. |
 | **`NODE_ENV`** | Sim | `production` | Modo de execução do Node.js. |
-| **`AI_GATEWAY_URL`** | Sim | `https://ai.sigapro.com/v1` | URL base do OmniRoute AI Gateway. |
+| **`AI_GATEWAY_URL`** | Sim | `https://ai.gateway.com/v1` | URL base do OmniRoute AI Gateway. |
 | **`AI_GATEWAY_KEY`** | Sim | `sk-...` | API Key para autenticação no OmniRoute. |
 | **`AI_MODEL`** | Sim | `sre/triage-combo` | Modelo LLM utilizado para Daily Digest e RCA. |
-| **`PROMETHEUS_URL`** | Sim | `http://prometheus:9090` | Acesso interno ao Prometheus na rede `coolify`. |
-| **`TEMPO_URL`** | Sim | `http://tempo:3200` | Acesso interno ao Grafana Tempo na rede `coolify`. |
-| **`LOKI_URL`** | Sim | `http://loki:3100` | Acesso interno ao Grafana Loki na rede `coolify`. |
-| **`PAYMENTS_GATEWAY_URL`** | **SIM** | `https://hml-payments.envolvati.com` | URL do gateway de pagamentos para aferição do `/health` e workers. |
-| **`SIGAPRO_API_URL`** | **SIM** | `https://api.sigapro.com` | URL do backend da API SigaPro para health check. |
-| **`SIGAPRO_APP_URL`** | **SIM** | `https://app.sigapro.com` | URL do frontend SigaPro para checagem de uptime. |
+| **`PROMETHEUS_URL`** | Sim | `http://prometheus:9090` | Acesso interno ao Prometheus na rede `docker`. |
+| **`TEMPO_URL`** | Sim | `http://tempo:3200` | Acesso interno ao Grafana Tempo na rede `docker`. |
+| **`LOKI_URL`** | Sim | `http://loki:3100` | Acesso interno ao Grafana Loki na rede `docker`. |
+| **`PAYMENTS_GATEWAY_URL`** | **SIM** | `https://payments.gateway.com` | URL do gateway de pagamentos para aferição do `/health` e workers. |
+| **`SIGAPRO_API_URL`** | **SIM** | `https://api.gateway.com` | URL do backend da API SigaPro para health check. |
+| **`SIGAPRO_APP_URL`** | **SIM** | `https://app.gateway.com` | URL do frontend SigaPro para checagem de uptime. |
 | **`TELEGRAM_BOT_TOKEN`** | Sim | `8198199909:...` | Token do bot emitido pelo @BotFather. |
-| **`TELEGRAM_CHAT_ID`** | Sim | `-1002295540132` | ID do grupo/canal do Telegram. |
-| **`TELEGRAM_THREAD_ID`** | Opcional | `10141` | ID do Tópico do fórum no Telegram (se aplicável). |
+| **`TELEGRAM_CHAT_ID`** | Sim | `-1000000000000` | ID do grupo/canal do Telegram. |
+| **`TELEGRAM_THREAD_ID`** | Opcional | `14141` | ID do Tópico do fórum no Telegram (se aplicável). |
 
 ---
 
@@ -141,7 +141,7 @@ sudo docker restart $(sudo docker ps -q --filter "name=sre-agent")
 ### 🔴 Problema 2: O Bot não responde a comandos no Telegram
 
 * **Sintoma:** O usuário envia `/help` ou `/apps` no Telegram e nada acontece.
-* **Causa Raiz:** 
+* **Causa Raiz:**
   1. Conflito de chat/tópico: a mensagem foi enviada fora do `TELEGRAM_CHAT_ID` ou de um tópico diferente de `TELEGRAM_THREAD_ID`.
   2. Falha de rede no Long Polling da API do Telegram.
 * **Como Validar:**

@@ -28,8 +28,16 @@ export class DailyDigestUseCase {
       console.log('[DailyDigestUseCase] Sending digest to Telegram...')
       const sent = await this.telegram.sendMessage(digest)
 
+      if (!sent) {
+        return {
+          success: false,
+          digest,
+          error: 'Falha ao enviar mensagem para o Telegram.',
+        }
+      }
+
       return {
-        success: sent,
+        success: true,
         digest,
       }
     } catch (err: unknown) {

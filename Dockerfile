@@ -23,6 +23,7 @@ COPY --from=builder /app/dist ./dist
 
 ENV NODE_ENV=production
 ENV PORT=3030
+ENV NODE_OPTIONS=--dns-result-order=ipv4first
 
 EXPOSE 3030
 
