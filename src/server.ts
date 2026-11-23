@@ -3,7 +3,10 @@ import { env } from 'config/env'
 import { checkMonitorsHealth } from 'collectors/probe'
 import { DailyDigestUseCase } from 'usecases/daily-digest'
 import { IncidentRCAUseCase } from 'usecases/incident-rca'
-import { HandleCoolifyWebhookUseCase, type CoolifyWebhookPayload } from 'usecases/handle-coolify-webhook'
+import {
+  HandleCoolifyWebhookUseCase,
+  type CoolifyWebhookPayload,
+} from 'usecases/handle-coolify-webhook'
 import { AuditPullRequestUseCase } from 'usecases/audit-pull-request'
 import { DeploymentsCollector } from 'collectors/deployments'
 import { TelegramListener } from './listeners/telegram.listener'
@@ -96,7 +99,7 @@ app.post('/webhooks/glitchtip', async (req, reply) => {
         ? body.project_name
         : typeof (body?.project as Record<string, unknown>)?.name === 'string'
           ? String((body?.project as Record<string, unknown>).name)
-          : attachmentProject ?? 'SigaPro'
+          : (attachmentProject ?? 'SigaPro')
 
     const issue = body?.issue as Record<string, unknown> | undefined
     const event = body?.event as Record<string, unknown> | undefined
@@ -126,12 +129,10 @@ app.post('/webhooks/glitchtip', async (req, reply) => {
 
     let stack: string | undefined
     const excValues = (event?.exception as Record<string, unknown>)?.values as
-      | Array<Record<string, unknown>>
-      | undefined
+      Array<Record<string, unknown>> | undefined
     if (excValues && excValues.length > 0) {
       const frames = (excValues[0]?.stacktrace as Record<string, unknown>)?.frames as
-        | Array<Record<string, unknown>>
-        | undefined
+        Array<Record<string, unknown>> | undefined
       if (frames && frames.length > 0) {
         stack = frames
           .slice(-5)
@@ -257,8 +258,9 @@ app.post('/webhooks/github', async (req, reply) => {
             title: typeof pr.title === 'string' ? pr.title : '',
             body: typeof pr.body === 'string' ? pr.body : '',
             author: (pr.user as Record<string, unknown> | undefined)?.login as string | undefined,
-            baseBranch: (pr.base as Record<string, unknown> | undefined)?.ref as string || 'main',
-            headBranch: (pr.head as Record<string, unknown> | undefined)?.ref as string || 'staging',
+            baseBranch: ((pr.base as Record<string, unknown> | undefined)?.ref as string) || 'main',
+            headBranch:
+              ((pr.head as Record<string, unknown> | undefined)?.ref as string) || 'staging',
             changedFilesCount: typeof pr.changed_files === 'number' ? pr.changed_files : undefined,
           })
           return reply.status(200).send(result)

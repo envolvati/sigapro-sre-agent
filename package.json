@@ -15,6 +15,7 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "start": "node dist/server.js",
     "digest": "tsx src/cli/digest.ts",
+    "logs:24h": "tsx src/cli/logs-24h.ts",
     "analyze": "tsx src/cli/analyze.ts"
   },
   "keywords": [

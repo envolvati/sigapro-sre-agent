@@ -20,8 +20,8 @@ const envSchema = z.object({
   // Monitored Applications URLs
   PAYMENTS_GATEWAY_URL: z.string().default('https://payments.envolvati.com'),
   PAYMENTS_GATEWAY_HML_URL: z.string().default('https://hml-payments.envolvati.com'),
-  SIGAPRO_API_URL: z .url().default('https://api.domain.com'),
-  SIGAPRO_APP_URL: z .url().default('https://app.domain.com'),
+  SIGAPRO_API_URL: z.url().default('https://api.domain.com'),
+  SIGAPRO_APP_URL: z.url().default('https://app.domain.com'),
 
   // Telegram Notifications
   TELEGRAM_BOT_TOKEN: z.string().min(1, 'TELEGRAM_BOT_TOKEN is required'),
@@ -50,7 +50,8 @@ export const env = envSchema.parse({
   TEMPO_URL: process.env.TEMPO_URL,
   LOKI_URL: process.env.LOKI_URL,
   PAYMENTS_GATEWAY_URL: process.env.PAYMENTS_GATEWAY_URL || 'https://payments.envolvati.com',
-  PAYMENTS_GATEWAY_HML_URL: process.env.PAYMENTS_GATEWAY_HML_URL || 'https://hml-payments.envolvati.com',
+  PAYMENTS_GATEWAY_HML_URL:
+    process.env.PAYMENTS_GATEWAY_HML_URL || 'https://hml-payments.envolvati.com',
   SIGAPRO_API_URL: process.env.SIGAPRO_API_URL,
   SIGAPRO_APP_URL: process.env.SIGAPRO_APP_URL,
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,

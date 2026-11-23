@@ -8,6 +8,7 @@ import { DailyDigestUseCase } from 'usecases/daily-digest'
 import { IncidentRCAUseCase } from 'usecases/incident-rca'
 import { PrometheusCollector } from 'collectors/prometheus'
 import { ServerCollector } from 'collectors/server'
+import { TempoCollector } from 'collectors/tempo'
 import { DeploymentsCollector } from 'collectors/deployments'
 import {
   GitHubCollector,
@@ -45,6 +46,7 @@ export class TelegramListener {
   private readonly ai = new AIGatewayClient()
   private readonly server = new ServerCollector()
   private readonly github = new GitHubCollector()
+  private readonly tempo = new TempoCollector()
   private readonly auditPR = new AuditPullRequestUseCase()
 
   async start() {
@@ -249,21 +251,23 @@ export class TelegramListener {
         return this.reply(chatId, msgText, msg.message_id, threadId)
       }
       if (cmd === '/deploys' || cmd === '/releases') {
-        const list = DeploymentsCollector.getInstance().getRecentDeployments(5)
-        if (list.length === 0) {
+        const report = await DeploymentsCollector.getInstance().getRecentDeployments24h(24)
+        if (report.deployments.length === 0) {
+          const noteSuffix = report.note ? `\n\nℹ️ _${report.note}_` : ''
           return this.reply(
             chatId,
-            '📦 *Histórico de Deploys:* Nenhum deploy recente registrado nesta sessão.',
+            `📦 *Histórico de Deploys (24h):* Nenhum deploy encontrado.${noteSuffix}`,
             msg.message_id,
             threadId,
           )
         }
 
-        let text = `📦 *Últimos Deploys Registrados (CI/CD):*\n\n`
-        for (const d of list) {
-          const icon = d.status === 'SUCCESS' ? '🚀' : '🔴'
+        let text = `📦 *Deploys das Últimas 24h (${report.source}):*\n\n`
+        for (const d of report.deployments.slice(0, 8)) {
+          const icon = d.status === 'SUCCESS' ? '🚀' : d.status === 'FAILED' ? '🔴' : '⏳'
           text += `${icon} *${d.application}* (${d.environment})\n`
-          if (d.commit) text += `   ↳ _Commit_: \`${d.commit}\` por ${d.author ?? 'desconhecido'}\n`
+          if (d.commit)
+            text += `   ↳ _Commit_: \`${d.commit}\`${d.author ? ` por ${d.author}` : ''}\n`
           if (d.triage?.summary) text += `   ↳ _Diagnóstico_: ${d.triage.summary}\n`
           text += `   ↳ _Hora_: ${d.timestamp}\n\n`
         }
@@ -404,7 +408,12 @@ export class TelegramListener {
           report = await this.apps.checkPaymentsGateway(isHml ? 'hml' : 'prod')
         } else if (target.includes('api') || target.includes('back')) {
           report = await this.apps.checkSigaproApi()
-        } else if (target.includes('front') || target.includes('app') || target.includes('web') || target.includes('next')) {
+        } else if (
+          target.includes('front') ||
+          target.includes('app') ||
+          target.includes('web') ||
+          target.includes('next')
+        ) {
           report = await this.apps.checkSigaproApp()
         } else {
           report = await this.apps.checkSigaproApp()
@@ -431,15 +440,19 @@ export class TelegramListener {
         if (report.details?.memory) {
           const mem = report.details.memory as {
             heapUsedMB?: number
+            heapAllocatedV8MB?: number
             heapTotalMB?: number
             rssMB?: number
           }
+          const allocatedMB = mem.heapAllocatedV8MB ?? mem.heapTotalMB ?? 0
           textRes += `\n🧠 *Memória da Instância Node.js:*\n`
-          textRes += `  • Heap Usada: \`${mem.heapUsedMB ?? 0} MB\` / \`${mem.heapTotalMB ?? 0} MB\`\n`
+          textRes += `  • Heap V8 (usada / alocada): \`${mem.heapUsedMB ?? 0} MB\` / \`${allocatedMB} MB\`\n`
           textRes += `  • RSS Total: \`${mem.rssMB ?? 0} MB\`\n`
           if (report.details.uptimeSeconds) {
+            const uptimeDays = Math.floor(Number(report.details.uptimeSeconds) / 86400)
             const uptimeMin = Math.floor(Number(report.details.uptimeSeconds) / 60)
-            textRes += `  • Uptime: \`${uptimeMin} min\`\n`
+            const uptimeLabel = uptimeDays >= 1 ? `${uptimeDays}d` : `${uptimeMin} min`
+            textRes += `  • Uptime: \`${uptimeLabel}\`\n`
           }
         }
 
@@ -477,9 +490,13 @@ export class TelegramListener {
         return this.reply(chatId, msgText, msg.message_id, threadId)
       }
 
-
       if (cmd === '/health' || cmd === '/status') {
-        const report = await checkMonitorsHealth()
+        const [report, tempoServices, lokiServices, promSummary] = await Promise.all([
+          checkMonitorsHealth(),
+          this.tempo.getConnectedServices(),
+          this.loki.getObservedServiceNames(),
+          this.prometheus.getRecentSummary('15m'),
+        ])
         let msgText = `🔍 *Status da Infraestrutura de Observabilidade:*\n\n`
         for (const [name, target] of Object.entries(report.monitors)) {
           const icon = target.status === 'UP' ? '✅' : '❌'
@@ -487,6 +504,10 @@ export class TelegramListener {
           const errorMsg = target.error ? `\n   ↳ _${target.error}_` : ''
           msgText += `${icon} *${name.toUpperCase()}*: ${target.status} ${latency}${errorMsg}\n`
         }
+        msgText += `\n📡 *SDKs / OTel Coletando:*\n`
+        msgText += `• *Tempo (Traces)*: ${tempoServices.available ? tempoServices.services.join(', ') || 'nenhum' : 'indisponível'}\n`
+        msgText += `• *Prometheus (Métricas)*: ${promSummary.prometheusAvailable ? promSummary.connectedServices.join(', ') || 'nenhum' : 'indisponível'}\n`
+        msgText += `• *Loki (Logs)*: ${lokiServices.join(', ') || 'nenhum'}\n`
         return this.reply(chatId, msgText, msg.message_id, threadId)
       }
 

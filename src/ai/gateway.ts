@@ -1,11 +1,21 @@
 import OpenAI from 'openai'
 import { env } from 'config/env'
-import type { LokiLogEntry } from 'collectors/loki'
+import type { DailyLogsSummary, LokiLogEntry } from 'collectors/loki'
 import type { CompactTrace } from 'collectors/tempo'
 import type { MonitoredAppReport } from 'collectors/apps'
 import type { MetricsSummary } from 'collectors/prometheus'
-import type { DeploymentEvent } from 'collectors/deployments'
+import type { DeploymentEvent, RecentDeploymentsReport } from 'collectors/deployments'
 
+export interface DailyDigestExtras {
+  logs24h?: DailyLogsSummary
+  deploysReport?: RecentDeploymentsReport
+  telemetryCoverage?: {
+    tempoAvailable: boolean
+    tempoServices: string[]
+    prometheusServices: string[]
+    lokiServices: string[]
+  }
+}
 export interface BuildTriageAnalysis {
   summary: string
   rootCause: string
@@ -88,6 +98,7 @@ export class AIGatewayClient {
     metrics: MetricsSummary,
     apps?: MonitoredAppReport[],
     recentDeploys?: DeploymentEvent[],
+    extras?: DailyDigestExtras,
   ): Promise<string> {
     const compactApps = apps?.map(app => {
       const item: Record<string, unknown> = {
@@ -99,7 +110,7 @@ export class AIGatewayClient {
         item.error = app.error
       }
       if (app.recentErrors && app.recentErrors.length > 0) {
-        item.recentErrors = app.recentErrors.map(e => ({
+        item.recentErrors15m = app.recentErrors.map(e => ({
           timestamp: e.timestamp,
           message: e.line.length > 180 ? `${e.line.slice(0, 180)}...` : e.line,
         }))
@@ -110,35 +121,74 @@ export class AIGatewayClient {
       return item
     })
 
+    const fmtMetric = (val: number | null, suffix: string) =>
+      val !== null ? `${val}${suffix}` : 'INDISPONÍVEL (sem série compatível ou sem tráfego)'
+
+    const logs24h = extras?.logs24h
+    const logsSection = logs24h
+      ? `Resumo Determinístico de Logs (Últimas ${logs24h.windowHours}h — Loki ${logs24h.lokiAvailable ? 'UP' : 'INDISPONÍVEL'}):
+- Total de Erros: ${logs24h.totalErrors} | Warnings: ${logs24h.totalWarnings} | Ruído de scanner AUTH-12 suprimido: ${logs24h.suppressedScannerNoise}
+- Clusters de Erros/Warnings agrupados (${logs24h.clusters.length}):
+${
+  logs24h.clusters.length > 0
+    ? logs24h.clusters
+        .map(c => `  • [${c.level} x${c.count}] ${c.service} (último: ${c.lastSeen}): ${c.sample}`)
+        .join('\n')
+    : '  Nenhum erro ou warning relevante registrado nas últimas 24h.'
+}`
+      : 'Resumo de logs 24h não fornecido.'
+
+    const deploysReport = extras?.deploysReport
+    const deploySourceNote = deploysReport?.note
+      ? `\nNota da fonte (${deploysReport.source}): ${deploysReport.note}`
+      : ''
+
+    const coverage = extras?.telemetryCoverage
+    const coverageSection = coverage
+      ? `Cobertura OTel / SDKs Conectados:
+- Tempo (Traces): ${coverage.tempoAvailable ? (coverage.tempoServices.length > 0 ? coverage.tempoServices.join(', ') : 'UP mas 0 serviços indexados') : 'INDISPONÍVEL'}
+- Prometheus (Métricas): ${metrics.prometheusAvailable ? (coverage.prometheusServices.length > 0 ? coverage.prometheusServices.join(', ') : 'UP mas 0 serviços OTel/jobs encontrados') : 'INDISPONÍVEL'}
+- Loki (service_name observados): ${coverage.lokiServices.length > 0 ? coverage.lokiServices.join(', ') : 'nenhum'}
+- Métricas HTTP selecionadas no Prometheus: requests=${metrics.matchedMetrics.requestsMetric ?? 'nenhuma'}, latency=${metrics.matchedMetrics.latencyBucketMetric ?? 'nenhuma'}`
+      : ''
+
     const prompt = `Você é um SRE Staff Engineer responsável pela infraestrutura do Sigapro e Gateway de Pagamentos Envolvati.
-Analise os seguintes indicadores de telemetria das últimas 24h e gere um "Daily SRE Digest" para o time no Telegram.
+Analise os seguintes indicadores determinísticos das últimas 24h e gere um "Daily SRE Digest" para o time no Telegram.
 
-Dados de Telemetria:
-- Taxa de Erro HTTP 5xx: ${metrics.errorRate5xx}%
-- Latência p95: ${metrics.latencyP95Seconds}s
-- Latência p99: ${metrics.latencyP99Seconds}s
+Dados de Telemetria HTTP (Prometheus, janela ${metrics.window}):
+- Total de Requests: ${metrics.requestsTotal !== null ? metrics.requestsTotal : 'INDISPONÍVEL'}
+- Taxa de Erro HTTP 5xx: ${fmtMetric(metrics.errorRate5xx, '%')}
+- Latência p95: ${fmtMetric(metrics.latencyP95Seconds, 's')}
+- Latência p99: ${fmtMetric(metrics.latencyP99Seconds, 's')}
 
-Status das Aplicações Monitoradas:
+${coverageSection}
+
+Status Atual das Aplicações Monitoradas:
 ${compactApps ? JSON.stringify(compactApps, null, 2) : 'Não informado'}
 
-Histórico de Deploys Recentes (CI/CD):
+${logsSection}
+
+Histórico de Deploys nas Últimas 24h (CI/CD):${deploySourceNote}
 ${
   recentDeploys && recentDeploys.length > 0
     ? recentDeploys
         .map(
           d =>
-            `- [${d.status}] ${d.application} (${d.environment}) commit: ${d.commit ?? 'HEAD'} autor: ${d.author ?? 'desconhecido'} (${d.timestamp})`,
+            `- [${d.status}] ${d.application} (${d.environment}) commit: ${d.commit ?? 'HEAD'}${d.author ? ` autor: ${d.author}` : ''}${d.commitMessage ? ` — ${d.commitMessage}` : ''} (${d.timestamp})`,
         )
         .join('\n')
-    : 'Nenhum deploy recente registrado'
+    : 'Nenhum deploy registrado na janela de 24h.'
 }
 
-Diretrizes:
+Diretrizes Obrigatórias (Anti-Alucinação):
 - Use formato conciso e profissional em Markdown com bullet points e emojis adequados.
-- Destaque o status de saúde geral do sistema e das aplicações individuais (Payments Gateway, API, App).
-- Correlacione anomalias de latência ou taxa de erro com deploys recentes se aplicável.
-- Forneça 1 recomendação técnica preventiva se houver qualquer desvio.
-- Mantenha a resposta com no máximo 15 linhas para leitura rápida no celular.`
+- NUNCA reporte "0% erros 5xx" ou "0s" se o campo estiver marcado como INDISPONÍVEL; diga explicitamente que a métrica está sem coleta/indisponível.
+- NUNCA interprete \`heapAllocatedV8MB\` (\`heapTotal\`) do Node.js como limite máximo de heap — o V8 aloca sob demanda e expande automaticamente; NÃO recomende aumentar limite de heap por causa disso (cite apenas \`rssMB\` se relevante).
+- Destaque os erros/warnings reais encontrados nos clusters das últimas 24h (ex: ORPHAN-05 no Payments, falhas de login, etc.), mesmo quando o /health HTTP está UP.
+- Se a fonte de deploys indicar falta de token do Coolify (\`memory-only\`), avise que o histórico de deploys depende de webhooks em memória.
+- Forneça 1 recomendação técnica prática baseada exclusivamente nos desvios reais observados.
+- Mantenha a resposta com no máximo 18 linhas para leitura rápida no celular.`
+
     try {
       const content = await this.createCompletionWithFallback(
         [{ role: 'user', content: prompt }],
@@ -189,14 +239,19 @@ Diretrizes:
       const jsonStr =
         firstBrace !== -1 && lastBrace !== -1
           ? rawContent.slice(firstBrace, lastBrace + 1)
-          : rawContent.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+          : rawContent
+              .replace(/^```json\s*/i, '')
+              .replace(/```\s*$/i, '')
+              .trim()
       const parsed = JSON.parse(jsonStr) as Partial<BuildTriageAnalysis>
 
       return {
         summary: parsed.summary || 'Falha na compilação do build',
         rootCause: parsed.rootCause || 'O processo de build falhou com código de erro não-zero.',
         culpritFiles: Array.isArray(parsed.culpritFiles) ? parsed.culpritFiles : [],
-        harnessPrompt: parsed.harnessPrompt || `Investigue e corrija o erro de build no commit ${params.commit ?? 'recente'}: ${params.logs.slice(-300)}`,
+        harnessPrompt:
+          parsed.harnessPrompt ||
+          `Investigue e corrija o erro de build no commit ${params.commit ?? 'recente'}: ${params.logs.slice(-300)}`,
       }
     } catch (err: unknown) {
       console.error('[AIGatewayClient] Error in triageBuildFailure:', err)
@@ -262,7 +317,10 @@ Diretrizes de Tom:
       const jsonStr =
         firstBrace !== -1 && lastBrace !== -1
           ? rawContent.slice(firstBrace, lastBrace + 1)
-          : rawContent.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+          : rawContent
+              .replace(/^```json\s*/i, '')
+              .replace(/```\s*$/i, '')
+              .trim()
       const parsed = JSON.parse(jsonStr) as Partial<PRAuditResult>
 
       return {
@@ -273,7 +331,10 @@ Diretrizes de Tom:
         checks: parsed.checks || {
           titleConvention: { pass: true, feedback: 'Título aceito.' },
           problemDescription: { pass: true, feedback: 'Descrição aceita.' },
-          validationEvidence: { pass: Boolean(parsed.isApproved), feedback: 'Evidências avaliadas.' },
+          validationEvidence: {
+            pass: Boolean(parsed.isApproved),
+            feedback: 'Evidências avaliadas.',
+          },
           checklistAndScope: { pass: true, feedback: 'Checklist verificado.' },
         },
         missingItems: Array.isArray(parsed.missingItems) ? parsed.missingItems : [],
@@ -299,8 +360,6 @@ Diretrizes de Tom:
       }
     }
   }
-
-
 
   async analyzeIncidentTrace(
     trace: CompactTrace,
@@ -371,7 +430,6 @@ Responda de forma concisa (máximo 12 linhas) com bullet points claros para envi
     }
   }
 
-
   async analyzeSnapshot(
     userQuestion: string,
     metrics: MetricsSummary,
@@ -387,11 +445,11 @@ Aqui está o snapshot em tempo real da telemetria da nossa infraestrutura e das 
 1. Status em Tempo Real das Aplicações de Negócio:
 ${JSON.stringify(apps, null, 2)}
 
-2. Métricas Gerais (Prometheus):
-- Taxa de erro 5xx: ${metrics.errorRate5xx}%
-- Latência p95: ${metrics.latencyP95Seconds}s
-- Latência p99: ${metrics.latencyP99Seconds}s
-
+2. Métricas Gerais (Prometheus, janela ${metrics.window}):
+- Taxa de erro 5xx: ${metrics.errorRate5xx !== null ? `${metrics.errorRate5xx}%` : 'INDISPONÍVEL (sem série compatível)'}
+- Latência p95: ${metrics.latencyP95Seconds !== null ? `${metrics.latencyP95Seconds}s` : 'INDISPONÍVEL'}
+- Latência p99: ${metrics.latencyP99Seconds !== null ? `${metrics.latencyP99Seconds}s` : 'INDISPONÍVEL'}
+- Serviços com métricas no Prometheus: ${metrics.connectedServices.length > 0 ? metrics.connectedServices.join(', ') : 'nenhum'}
 3. Últimos logs de erro capturados no Loki:
 ${recentErrors.length > 0 ? JSON.stringify(recentErrors, null, 2) : 'Nenhum log de erro crítico registrado nos últimos 15 min.'}
 

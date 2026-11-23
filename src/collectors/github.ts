@@ -103,7 +103,10 @@ export class GitHubCollector {
     }
   }
 
-  async getPullRequest(repoFullName: string, pullNumber: number): Promise<GitHubPullDetails | null> {
+  async getPullRequest(
+    repoFullName: string,
+    pullNumber: number,
+  ): Promise<GitHubPullDetails | null> {
     if (!env.GITHUB_TOKEN) return null
     try {
       const url = `https://api.github.com/repos/${repoFullName}/pulls/${pullNumber}`

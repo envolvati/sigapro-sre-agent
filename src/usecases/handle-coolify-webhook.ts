@@ -74,7 +74,8 @@ export class HandleCoolifyWebhookUseCase {
       text += `📦 *Aplicação:* \`${appName}\` (${envName})\n`
       if (author) text += `👤 *Autor:* ${author}\n`
       if (commit) text += `🔖 *Commit:* \`${commit}\`\n`
-      if (dto.deployment_url) text += `🛠️ *Deploy no Coolify:* [Ver detalhes](${dto.deployment_url})\n`
+      if (dto.deployment_url)
+        text += `🛠️ *Deploy no Coolify:* [Ver detalhes](${dto.deployment_url})\n`
 
       text += `\n🔍 *Diagnóstico da IA:*\n`
       text += `• *Problema:* ${triage.summary}\n`

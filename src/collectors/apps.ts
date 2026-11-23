@@ -15,7 +15,10 @@ export interface MonitoredAppReport {
 export class AppsCollector {
   private readonly loki = new LokiCollector()
 
-  async checkPaymentsGateway(envType: 'prod' | 'hml' = 'prod'): Promise<MonitoredAppReport> {
+  async checkPaymentsGateway(
+    envType: 'prod' | 'hml' = 'prod',
+    prefetchedErrors?: LokiLogEntry[],
+  ): Promise<MonitoredAppReport> {
     const isHml = envType === 'hml'
     const name = isHml
       ? 'Envolvati Payments Gateway (Homologação)'
@@ -23,20 +26,33 @@ export class AppsCollector {
     const key = isHml ? 'payments-hml' : 'payments-prod'
 
     const baseUrl = isHml
-      ? (env.PAYMENTS_GATEWAY_HML_URL || 'https://hml-payments.envolvati.com')
-      : (env.PAYMENTS_GATEWAY_URL.includes('hml') ? 'https://payments.envolvati.com' : env.PAYMENTS_GATEWAY_URL)
+      ? env.PAYMENTS_GATEWAY_HML_URL || 'https://hml-payments.envolvati.com'
+      : env.PAYMENTS_GATEWAY_URL.includes('hml')
+        ? 'https://payments.envolvati.com'
+        : env.PAYMENTS_GATEWAY_URL
 
     const url = `${baseUrl.replace(/\/$/, '')}/health`
     const start = Date.now()
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+      const [res, recentErrors] = await Promise.all([
+        fetch(url, { signal: AbortSignal.timeout(5000) }),
+        prefetchedErrors
+          ? Promise.resolve(prefetchedErrors)
+          : this.loki.getRecentErrors(15, '.+', 15),
+      ])
       const latencyMs = Date.now() - start
-      const recentErrors = await this.loki.getRecentErrors(5, '.*payments.*')
-      const paymentsErrors = recentErrors.filter(
-        e =>
-          e.service?.toLowerCase().includes('payments') ||
-          e.line.toLowerCase().includes('payments-gateway'),
-      )
+      const paymentsErrors = recentErrors
+        .filter(e => {
+          const svc = (e.service ?? '').toLowerCase()
+          if (!svc.includes('payments') && !e.line.toLowerCase().includes('payments-gateway')) {
+            return false
+          }
+          if (isHml && svc.includes('prod')) return false
+          if (!isHml && svc.includes('hml')) return false
+          return true
+        })
+        .slice(0, 5)
+
       if (res.ok) {
         const data = (await res.json()) as {
           status: string
@@ -78,24 +94,35 @@ export class AppsCollector {
     }
   }
 
-  async checkSigaproApi(): Promise<MonitoredAppReport> {
+  async checkSigaproApi(prefetchedErrors?: LokiLogEntry[]): Promise<MonitoredAppReport> {
     const url = env.SIGAPRO_API_URL
     const start = Date.now()
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+      const [res, recentErrors] = await Promise.all([
+        fetch(url, { signal: AbortSignal.timeout(5000) }),
+        prefetchedErrors
+          ? Promise.resolve(prefetchedErrors)
+          : this.loki.getRecentErrors(10, 'sigapro-api-prod', 15),
+      ])
       const latencyMs = Date.now() - start
-      const recentErrors = await this.loki.getRecentErrors(5, 'sigapro-api.*')
-      const apiErrors = recentErrors.filter(
-        e => e.service?.toLowerCase().includes('api') || e.service?.toLowerCase().includes('sigapro'),
-      )
+      const apiErrors = recentErrors
+        .filter(e => {
+          const svc = (e.service ?? '').toLowerCase()
+          return svc.includes('sigapro-api-prod') || svc === 'sigapro:prod-api'
+        })
+        .slice(0, 5)
 
-      if (res.ok || res.status === 200 || res.status === 404) {
+      if (res.ok) {
         return {
           name: 'SigaPro API (Backend)',
           key: 'sigapro-api',
           url,
           status: 'UP',
           latencyMs,
+          details: {
+            httpStatus: res.status,
+            healthCheckType: 'root-endpoint-only',
+          },
           recentErrors: apiErrors,
         }
       }
@@ -120,21 +147,31 @@ export class AppsCollector {
     }
   }
 
-  async checkSigaproApp(): Promise<MonitoredAppReport> {
+  async checkSigaproApp(prefetchedErrors?: LokiLogEntry[]): Promise<MonitoredAppReport> {
     const baseUrl = env.SIGAPRO_APP_URL.replace(/\/$/, '')
     const healthUrl = `${baseUrl}/api/health`
     const start = Date.now()
     try {
-      const recentErrors = await this.loki.getRecentErrors(5, 'sigapro-app.*')
-      const appErrors = recentErrors.filter(
-        e =>
-          e.service?.toLowerCase().includes('app') ||
-          e.line.toLowerCase().includes('sigapro-app') ||
-          e.line.toLowerCase().includes('next'),
-      )
-
-      const res = await fetch(healthUrl, { signal: AbortSignal.timeout(5000) })
+      const [res, recentErrors] = await Promise.all([
+        fetch(healthUrl, { signal: AbortSignal.timeout(5000) }),
+        prefetchedErrors
+          ? Promise.resolve(prefetchedErrors)
+          : this.loki.getRecentErrors(15, '.+', 15),
+      ])
       const latencyMs = Date.now() - start
+
+      const appErrors = recentErrors
+        .filter(e => {
+          const svc = (e.service ?? '').toLowerCase()
+          const line = e.line.toLowerCase()
+          return (
+            svc.includes('sigapro-app') ||
+            svc.includes('prod-app') ||
+            line.includes('sigapro-app') ||
+            line.includes('error login')
+          )
+        })
+        .slice(0, 5)
 
       if (res.ok) {
         const data = (await res.json()) as {
@@ -152,7 +189,14 @@ export class AppsCollector {
           latencyMs,
           details: {
             uptimeSeconds: data.uptimeSeconds,
-            memory: data.memory,
+            memory: data.memory
+              ? {
+                  heapUsedMB: data.memory.heapUsedMB,
+                  heapAllocatedV8MB: data.memory.heapTotalMB,
+                  rssMB: data.memory.rssMB,
+                  note: 'heapAllocatedV8MB (heapTotal) é o bloco V8 alocado sob demanda até agora, NÃO o limite máximo de heap do Node.js.',
+                }
+              : undefined,
             nodeVersion: data.nodeVersion,
           },
           recentErrors: appErrors,
@@ -161,7 +205,7 @@ export class AppsCollector {
 
       // Fallback para URL raiz se o endpoint ainda não estiver ativo
       const rootRes = await fetch(baseUrl, { signal: AbortSignal.timeout(5000) })
-      if (rootRes.ok || rootRes.status === 200) {
+      if (rootRes.ok) {
         return {
           name: 'SigaPro App (Frontend Next.js)',
           key: 'sigapro-app',
@@ -194,11 +238,12 @@ export class AppsCollector {
   }
 
   async getAllApps(): Promise<MonitoredAppReport[]> {
+    const sharedErrors = await this.loki.getRecentErrors(30, '.+', 15)
     return Promise.all([
-      this.checkPaymentsGateway('prod'),
-      this.checkPaymentsGateway('hml'),
-      this.checkSigaproApi(),
-      this.checkSigaproApp(),
+      this.checkPaymentsGateway('prod', sharedErrors),
+      this.checkPaymentsGateway('hml', sharedErrors),
+      this.checkSigaproApi(sharedErrors),
+      this.checkSigaproApp(sharedErrors),
     ])
   }
 }

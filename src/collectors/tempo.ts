@@ -148,4 +148,36 @@ export class TempoCollector {
       return null
     }
   }
+
+  async getConnectedServices(): Promise<{ available: boolean; services: string[] }> {
+    const endpoints = [
+      `${this.baseUrl}/api/search/tag/service.name/values`,
+      `${this.baseUrl}/api/v2/search/tag/service.name/values`,
+    ]
+
+    for (const url of endpoints) {
+      try {
+        const res = await fetch(url, {
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(5000),
+        })
+        if (!res.ok) continue
+
+        const raw = (await res.json()) as {
+          tagValues?: Array<string | { value?: string }>
+        }
+        if (!Array.isArray(raw.tagValues)) continue
+
+        const services = raw.tagValues
+          .map(v => (typeof v === 'string' ? v : (v.value ?? '')))
+          .filter(Boolean)
+
+        return { available: true, services: [...new Set(services)].sort() }
+      } catch {
+        // try fallback endpoint
+      }
+    }
+
+    return { available: false, services: [] }
+  }
 }
