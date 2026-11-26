@@ -218,8 +218,8 @@ export class TelegramListener {
 • \`/health\` (ou \`/status\`) — Testa a conectividade interna e a latência de rede da stack de observabilidade (Prometheus, Tempo, Loki e OmniRoute).
 
 📈 *SEO & Performance Web*
-• \`/seo\` (ou \`/gsc\`) — Resumo de SEO e telemetria orgânica no Google (impressões, cliques e termos de busca nos 4 domínios).
-• \`/pagespeed [url]\` (ou \`/psi\`) — Auditoria Lighthouse e Core Web Vitals (Scores 0-100, LCP, CLS e peso da página).`
+• \`/seo [dominio]\` (ou \`/gsc\`) — Resumo de SEO no Google Search Console (geral ou filtrado por domínio, ex: \`/seo ofertas\` ou \`/seo ofertyza.com.br\`).
+• \`/pagespeed [url] [desktop]\` (ou \`/psi\`) — Resumo de performance do portfólio (sem args) ou auditoria Lighthouse profunda de qualquer URL (Scores 0-100, LCP, CLS, TBT).`
         return this.reply(chatId, helpMsg, msg.message_id, threadId)
       }
 
@@ -538,15 +538,64 @@ export class TelegramListener {
       }
 
       if (cmd === '/seo' || cmd === '/gsc') {
-        await this.reply(
-          chatId,
-          '🔍 Consultando telemetria orgânica no Google Search Console...',
-          msg.message_id,
-          threadId,
-        )
+        const filterTerm = query
+          ? query.toLowerCase().replace('https://', '').replace('http://', '').replace(/\/$/, '')
+          : ''
+        const waitingMsg = filterTerm
+          ? `🔍 Consultando telemetria orgânica no Google Search Console para *${filterTerm}*...`
+          : '🔍 Consultando telemetria orgânica no Google Search Console...'
+
+        await this.reply(chatId, waitingMsg, msg.message_id, threadId)
 
         try {
           const stats = await this.searchConsole.getPortfolioSummary(30)
+          const matchingSites = filterTerm
+            ? stats.sites.filter(
+                s =>
+                  s.cleanName.toLowerCase().includes(filterTerm) ||
+                  s.siteUrl.toLowerCase().includes(filterTerm),
+              )
+            : stats.sites
+
+          if (filterTerm && matchingSites.length === 0) {
+            const available = stats.sites.map(s => `• \`${s.cleanName}\``).join('\n')
+            return this.reply(
+              chatId,
+              `❌ Nenhum domínio encontrado com o filtro *"${query}"*.\n\n🌐 *Domínios monitorados (${stats.summary.totalSites}):*\n${available}\n\n💡 _Dica: use /seo sem argumentos para o resumo geral de todos os sites._`,
+              msg.message_id,
+              threadId,
+            )
+          }
+
+          // Visualização detalhada de um único domínio
+          if (filterTerm && matchingSites.length === 1) {
+            const s = matchingSites[0]
+            let msgText = `📈 *Google Search Console — ${s.cleanName}*\n`
+            msgText += `_Últimos ${stats.periodDays} dias_\n\n`
+            msgText += `📊 *Métricas:*\n`
+            msgText += `• Impressões: *${s.impressions}*\n`
+            msgText += `• Cliques: *${s.clicks}*\n`
+            msgText += `• CTR Médio: *${s.ctr}%*\n`
+            msgText += `• Posição Média: *#${s.avgPosition}*\n\n`
+
+            if (s.topQueries && s.topQueries.length > 0) {
+              msgText += `🔍 *Principais Termos de Busca:*\n`
+              for (const q of s.topQueries) {
+                msgText += `• _"${q.query}"_\n`
+                msgText += `   ↳ ${q.impressions} imp | ${q.clicks} clicks | CTR: ${q.ctr}% | pos: #${q.position}\n`
+              }
+            } else {
+              msgText += `ℹ️ _Nenhuma query registrada para este domínio nos últimos ${stats.periodDays} dias._\n`
+            }
+
+            if (s.error) {
+              msgText += `\n⚠️ _Aviso: ${s.error}_\n`
+            }
+
+            return this.reply(chatId, msgText, msg.message_id, threadId)
+          }
+
+          // Visualização de portfólio consolidado (ou múltiplos domínios correspondentes)
           let msgText = `📈 *Google Search Console — Últimos ${stats.periodDays} dias*\n\n`
           msgText += `🌐 *Visão Geral:*\n`
           msgText += `• Domínios Monitorados: *${stats.summary.totalSites}*\n`
@@ -555,7 +604,7 @@ export class TelegramListener {
           msgText += `• CTR Médio: *${stats.summary.overallCtr}%*\n\n`
 
           msgText += `📊 *Por Domínio:*\n`
-          for (const s of stats.sites) {
+          for (const s of matchingSites) {
             msgText += `• *${s.cleanName}* (${s.impressions} imp | ${s.clicks} clicks | pos: #${s.avgPosition})\n`
             if (s.topQueries && s.topQueries.length > 0) {
               for (const q of s.topQueries.slice(0, 3)) {
@@ -577,17 +626,75 @@ export class TelegramListener {
       }
 
       if (cmd === '/pagespeed' || cmd === '/psi') {
-        const target = query || 'https://wjunior.dev.br'
-        const normalizedTarget = target.startsWith('http') ? target : `https://${target}`
+        const parts = query ? query.split(/\s+/) : []
+        const hasDesktop = parts.some(p => p.toLowerCase() === 'desktop')
+        const strategy: 'mobile' | 'desktop' = hasDesktop ? 'desktop' : 'mobile'
+        const rawTarget = parts
+          .filter(p => p.toLowerCase() !== 'desktop' && p.toLowerCase() !== 'mobile')
+          .join(' ')
+          .trim()
+
+        // 1. Sem alvo: visão consolidada do portfólio (com cache)
+        if (!rawTarget) {
+          await this.reply(
+            chatId,
+            '⚡ Carregando visão consolidada do PageSpeed para o portfólio...',
+            msg.message_id,
+            threadId,
+          )
+
+          try {
+            const summary = await this.pageSpeed.getPortfolioPageSpeedSummary()
+            const badge = (s: number) => (s >= 90 ? '🟢' : s >= 50 ? '🟡' : '🔴')
+
+            let msgText = `⚡ *Google PageSpeed Insights — Portfólio*\n`
+            msgText += `_Estratégia: Mobile (Lighthouse)${summary.fromCache ? ' | Cache' : ''}_\n\n`
+            msgText += `🌐 *Médias do Portfólio:*\n`
+            msgText += `• Performance: ${badge(summary.averageScores.performance)} *${summary.averageScores.performance}/100*\n`
+            msgText += `• Acessibilidade: ${badge(summary.averageScores.accessibility)} *${summary.averageScores.accessibility}/100*\n`
+            msgText += `• Melhores Práticas: ${badge(summary.averageScores.bestPractices)} *${summary.averageScores.bestPractices}/100*\n`
+            msgText += `• SEO: ${badge(summary.averageScores.seo)} *${summary.averageScores.seo}/100*\n\n`
+
+            msgText += `📊 *Por Domínio:*\n`
+            for (const s of summary.sites) {
+              msgText += `• *${s.cleanName}*: Perf ${badge(s.scores.performance)} *${s.scores.performance}* | A11y ${badge(s.scores.accessibility)} *${s.scores.accessibility}* | SEO ${badge(s.scores.seo)} *${s.scores.seo}*\n`
+              msgText += `   ↳ _LCP_: ${s.metrics.lcp} | _CLS_: ${s.metrics.cls} | _FCP_: ${s.metrics.fcp}\n`
+            }
+
+            msgText += `\n💡 _Dica: use /pagespeed <url> [desktop] para auditoria profunda de qualquer página._`
+
+            return this.reply(chatId, msgText, msg.message_id, threadId)
+          } catch (err: unknown) {
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            return this.reply(
+              chatId,
+              `❌ Erro ao consultar resumo do PageSpeed: ${errorMsg}`,
+              msg.message_id,
+              threadId,
+            )
+          }
+        }
+
+        // 2. Alvo especificado: resolução de alias ou URL direta
+        const aliasMap: Record<string, string> = {
+          ofertyza: 'https://ofertyza.com.br',
+          ofertas: 'https://ofertyza.com.br',
+          envolvati: 'https://envolvati.com',
+          sigapro: 'https://sigapro.com',
+          wjunior: 'https://wjunior.dev.br',
+        }
+        const resolved = aliasMap[rawTarget.toLowerCase()] || rawTarget
+        const normalizedTarget = resolved.startsWith('http') ? resolved : `https://${resolved}`
+
         await this.reply(
           chatId,
-          `⚡ Executando auditoria Lighthouse para *${normalizedTarget}* (aguarde ~10s)...`,
+          `⚡ Executando auditoria Lighthouse (${strategy}) para *${normalizedTarget}* (aguarde ~10s)...`,
           msg.message_id,
           threadId,
         )
 
         try {
-          const audit = await this.pageSpeed.auditSite(normalizedTarget, 'mobile')
+          const audit = await this.pageSpeed.auditSite(normalizedTarget, strategy)
           if (audit.error) {
             return this.reply(
               chatId,
@@ -599,7 +706,7 @@ export class TelegramListener {
 
           const badge = (s: number) => (s >= 90 ? '🟢' : s >= 50 ? '🟡' : '🔴')
           let msgText = `⚡ *Google PageSpeed Insights — ${audit.cleanName}*\n`
-          msgText += `_Estratégia: Mobile (Lighthouse)_\n\n`
+          msgText += `_Estratégia: ${strategy === 'desktop' ? 'Desktop' : 'Mobile'} (Lighthouse)_\n\n`
           msgText += `📊 *Scores Lighthouse:*\n`
           msgText += `• Performance: ${badge(audit.scores.performance)} *${audit.scores.performance}/100*\n`
           msgText += `• Acessibilidade: ${badge(audit.scores.accessibility)} *${audit.scores.accessibility}/100*\n`

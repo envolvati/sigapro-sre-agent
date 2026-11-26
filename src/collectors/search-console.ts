@@ -237,7 +237,7 @@ export class SearchConsoleCollector {
           startDate,
           endDate,
           dimensions: ['query'],
-          rowLimit: 5,
+          rowLimit: 10,
         }),
       },
     )
