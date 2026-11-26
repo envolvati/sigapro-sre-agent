@@ -74,8 +74,36 @@ export class SearchConsoleCollector {
   }
 
   private resolveKey(): { key: ServiceAccountKey; path: string } {
+    const rawCred = env.GOOGLE_APPLICATION_CREDENTIALS?.trim()
+    if (rawCred) {
+      // 1. Tenta interpretar como JSON direto
+      if (rawCred.startsWith('{') && rawCred.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(rawCred) as ServiceAccountKey
+          if (parsed.client_email && parsed.private_key) {
+            return { key: parsed, path: 'inline:GOOGLE_APPLICATION_CREDENTIALS' }
+          }
+        } catch {
+          // segue para outras tentativas
+        }
+      }
+
+      // 2. Tenta interpretar como Base64 de JSON
+      try {
+        const decoded = Buffer.from(rawCred, 'base64').toString('utf-8').trim()
+        if (decoded.startsWith('{') && decoded.endsWith('}')) {
+          const parsed = JSON.parse(decoded) as ServiceAccountKey
+          if (parsed.client_email && parsed.private_key) {
+            return { key: parsed, path: 'base64:GOOGLE_APPLICATION_CREDENTIALS' }
+          }
+        }
+      } catch {
+        // segue para arquivo
+      }
+    }
+
     const candidates = [
-      env.GOOGLE_APPLICATION_CREDENTIALS,
+      rawCred,
       path.join(process.env.HOME || '', '.gcp', 'gsc-credentials.json'),
       path.join(
         process.env.HOME || '',
@@ -99,7 +127,7 @@ export class SearchConsoleCollector {
     }
 
     throw new Error(
-      'Credenciais do Google Search Console não encontradas. Configure GOOGLE_APPLICATION_CREDENTIALS no .env',
+      'Credenciais do Google Search Console não encontradas. Configure GOOGLE_APPLICATION_CREDENTIALS no .env com o caminho do arquivo JSON, JSON inline ou Base64',
     )
   }
 
