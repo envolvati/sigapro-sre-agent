@@ -12,7 +12,7 @@ Envie qualquer um dos comandos abaixo diretamente no chat ou tópico configurado
 | Comando | Alias | Descrição |
 | :--- | :--- | :--- |
 | `/seo [dominio]` | `/gsc` | Telemetria do Google Search Console. Sem parâmetros mostra o portfólio consolidado de todos os domínios. Passando o domínio (ex.: `/seo ofertyza.com.br` ou `/seo envolvati`), exibe raio-x detalhado com até 10 principais termos ranqueados, impressões, cliques, CTR e posição. |
-| `/pagespeed [url]` | `/psi` | Executa auditoria do Google PageSpeed/Lighthouse em tempo real com Scores (0-100) e Core Web Vitals (LCP, CLS, FCP, TBT e peso da página). Se a URL for omitida, testa `wjunior.dev.br`. |
+| `/pagespeed [url] [desktop]` | `/psi` | Auditoria do Google PageSpeed. Sem parâmetros traz o painel consolidado do portfólio (com médias e scores de cada site). Passando uma URL ou alias (ex.: `/pagespeed ofertas`, `/pagespeed https://cliente.com.br desktop`), executa auditoria Lighthouse em tempo real com Scores (0-100) e Core Web Vitals (LCP, CLS, FCP, TBT e peso da página). |
 ### 📦 Aplicações & Microsserviços
 | Comando | Alias | Descrição |
 | :--- | :--- | :--- |

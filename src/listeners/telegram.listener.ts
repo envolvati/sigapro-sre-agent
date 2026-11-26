@@ -219,7 +219,7 @@ export class TelegramListener {
 
 📈 *SEO & Performance Web*
 • \`/seo [dominio]\` (ou \`/gsc\`) — Resumo de SEO no Google Search Console (geral ou filtrado por domínio, ex: \`/seo ofertas\` ou \`/seo ofertyza.com.br\`).
-• \`/pagespeed [url]\` (ou \`/psi\`) — Auditoria Lighthouse e Core Web Vitals (Scores 0-100, LCP, CLS e peso da página).`
+• \`/pagespeed [url] [desktop]\` (ou \`/psi\`) — Resumo de performance do portfólio (sem args) ou auditoria Lighthouse profunda de qualquer URL (Scores 0-100, LCP, CLS, TBT).`
         return this.reply(chatId, helpMsg, msg.message_id, threadId)
       }
 
@@ -626,17 +626,75 @@ export class TelegramListener {
       }
 
       if (cmd === '/pagespeed' || cmd === '/psi') {
-        const target = query || 'https://wjunior.dev.br'
-        const normalizedTarget = target.startsWith('http') ? target : `https://${target}`
+        const parts = query ? query.split(/\s+/) : []
+        const hasDesktop = parts.some(p => p.toLowerCase() === 'desktop')
+        const strategy: 'mobile' | 'desktop' = hasDesktop ? 'desktop' : 'mobile'
+        const rawTarget = parts
+          .filter(p => p.toLowerCase() !== 'desktop' && p.toLowerCase() !== 'mobile')
+          .join(' ')
+          .trim()
+
+        // 1. Sem alvo: visão consolidada do portfólio (com cache)
+        if (!rawTarget) {
+          await this.reply(
+            chatId,
+            '⚡ Carregando visão consolidada do PageSpeed para o portfólio...',
+            msg.message_id,
+            threadId,
+          )
+
+          try {
+            const summary = await this.pageSpeed.getPortfolioPageSpeedSummary()
+            const badge = (s: number) => (s >= 90 ? '🟢' : s >= 50 ? '🟡' : '🔴')
+
+            let msgText = `⚡ *Google PageSpeed Insights — Portfólio*\n`
+            msgText += `_Estratégia: Mobile (Lighthouse)${summary.fromCache ? ' | Cache' : ''}_\n\n`
+            msgText += `🌐 *Médias do Portfólio:*\n`
+            msgText += `• Performance: ${badge(summary.averageScores.performance)} *${summary.averageScores.performance}/100*\n`
+            msgText += `• Acessibilidade: ${badge(summary.averageScores.accessibility)} *${summary.averageScores.accessibility}/100*\n`
+            msgText += `• Melhores Práticas: ${badge(summary.averageScores.bestPractices)} *${summary.averageScores.bestPractices}/100*\n`
+            msgText += `• SEO: ${badge(summary.averageScores.seo)} *${summary.averageScores.seo}/100*\n\n`
+
+            msgText += `📊 *Por Domínio:*\n`
+            for (const s of summary.sites) {
+              msgText += `• *${s.cleanName}*: Perf ${badge(s.scores.performance)} *${s.scores.performance}* | A11y ${badge(s.scores.accessibility)} *${s.scores.accessibility}* | SEO ${badge(s.scores.seo)} *${s.scores.seo}*\n`
+              msgText += `   ↳ _LCP_: ${s.metrics.lcp} | _CLS_: ${s.metrics.cls} | _FCP_: ${s.metrics.fcp}\n`
+            }
+
+            msgText += `\n💡 _Dica: use /pagespeed <url> [desktop] para auditoria profunda de qualquer página._`
+
+            return this.reply(chatId, msgText, msg.message_id, threadId)
+          } catch (err: unknown) {
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            return this.reply(
+              chatId,
+              `❌ Erro ao consultar resumo do PageSpeed: ${errorMsg}`,
+              msg.message_id,
+              threadId,
+            )
+          }
+        }
+
+        // 2. Alvo especificado: resolução de alias ou URL direta
+        const aliasMap: Record<string, string> = {
+          ofertyza: 'https://ofertyza.com.br',
+          ofertas: 'https://ofertyza.com.br',
+          envolvati: 'https://envolvati.com',
+          sigapro: 'https://sigapro.com',
+          wjunior: 'https://wjunior.dev.br',
+        }
+        const resolved = aliasMap[rawTarget.toLowerCase()] || rawTarget
+        const normalizedTarget = resolved.startsWith('http') ? resolved : `https://${resolved}`
+
         await this.reply(
           chatId,
-          `⚡ Executando auditoria Lighthouse para *${normalizedTarget}* (aguarde ~10s)...`,
+          `⚡ Executando auditoria Lighthouse (${strategy}) para *${normalizedTarget}* (aguarde ~10s)...`,
           msg.message_id,
           threadId,
         )
 
         try {
-          const audit = await this.pageSpeed.auditSite(normalizedTarget, 'mobile')
+          const audit = await this.pageSpeed.auditSite(normalizedTarget, strategy)
           if (audit.error) {
             return this.reply(
               chatId,
@@ -648,7 +706,7 @@ export class TelegramListener {
 
           const badge = (s: number) => (s >= 90 ? '🟢' : s >= 50 ? '🟡' : '🔴')
           let msgText = `⚡ *Google PageSpeed Insights — ${audit.cleanName}*\n`
-          msgText += `_Estratégia: Mobile (Lighthouse)_\n\n`
+          msgText += `_Estratégia: ${strategy === 'desktop' ? 'Desktop' : 'Mobile'} (Lighthouse)_\n\n`
           msgText += `📊 *Scores Lighthouse:*\n`
           msgText += `• Performance: ${badge(audit.scores.performance)} *${audit.scores.performance}/100*\n`
           msgText += `• Acessibilidade: ${badge(audit.scores.accessibility)} *${audit.scores.accessibility}/100*\n`
