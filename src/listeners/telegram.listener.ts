@@ -17,6 +17,8 @@ import {
   formatAuthorTag,
 } from 'collectors/github'
 import { AuditPullRequestUseCase } from 'usecases/audit-pull-request'
+import { SearchConsoleCollector } from 'collectors/search-console'
+import { PageSpeedCollector } from 'collectors/pagespeed'
 
 interface TelegramUpdate {
   update_id: number
@@ -48,6 +50,8 @@ export class TelegramListener {
   private readonly github = new GitHubCollector()
   private readonly tempo = new TempoCollector()
   private readonly auditPR = new AuditPullRequestUseCase()
+  private readonly searchConsole = SearchConsoleCollector.getInstance()
+  private readonly pageSpeed = PageSpeedCollector.getInstance()
 
   async start() {
     this.isRunning = true
@@ -211,8 +215,11 @@ export class TelegramListener {
 
 📊 *Rotinas & Telemetria*
 • \`/digest\` — Dispara sob demanda o Daily SRE Digest com o resumo executivo de uptime, taxa de erros e latência das últimas 24h.
+• \`/health\` (ou \`/status\`) — Testa a conectividade interna e a latência de rede da stack de observabilidade (Prometheus, Tempo, Loki e OmniRoute).
 
-• \`/health\` (ou \`/status\`) — Testa a conectividade interna e a latência de rede da stack de observabilidade (Prometheus, Tempo, Loki e OmniRoute).`
+📈 *SEO & Performance Web*
+• \`/seo\` (ou \`/gsc\`) — Resumo de SEO e telemetria orgânica no Google (impressões, cliques e termos de busca nos 4 domínios).
+• \`/pagespeed [url]\` (ou \`/psi\`) — Auditoria Lighthouse e Core Web Vitals (Scores 0-100, LCP, CLS e peso da página).`
         return this.reply(chatId, helpMsg, msg.message_id, threadId)
       }
 
@@ -528,6 +535,94 @@ export class TelegramListener {
           )
         }
         return
+      }
+
+      if (cmd === '/seo' || cmd === '/gsc') {
+        await this.reply(
+          chatId,
+          '🔍 Consultando telemetria orgânica no Google Search Console...',
+          msg.message_id,
+          threadId,
+        )
+
+        try {
+          const stats = await this.searchConsole.getPortfolioSummary(30)
+          let msgText = `📈 *Google Search Console — Últimos ${stats.periodDays} dias*\n\n`
+          msgText += `🌐 *Visão Geral:*\n`
+          msgText += `• Domínios Monitorados: *${stats.summary.totalSites}*\n`
+          msgText += `• Total de Impressões: *${stats.summary.totalImpressions}*\n`
+          msgText += `• Total de Cliques: *${stats.summary.totalClicks}*\n`
+          msgText += `• CTR Médio: *${stats.summary.overallCtr}%*\n\n`
+
+          msgText += `📊 *Por Domínio:*\n`
+          for (const s of stats.sites) {
+            msgText += `• *${s.cleanName}* (${s.impressions} imp | ${s.clicks} clicks | pos: #${s.avgPosition})\n`
+            if (s.topQueries && s.topQueries.length > 0) {
+              for (const q of s.topQueries.slice(0, 3)) {
+                msgText += `   ↳ _"${q.query}"_: ${q.impressions} imp (pos: #${q.position})\n`
+              }
+            }
+          }
+
+          return this.reply(chatId, msgText, msg.message_id, threadId)
+        } catch (err: unknown) {
+          const errorMsg = err instanceof Error ? err.message : String(err)
+          return this.reply(
+            chatId,
+            `❌ Erro ao consultar Search Console: ${errorMsg}`,
+            msg.message_id,
+            threadId,
+          )
+        }
+      }
+
+      if (cmd === '/pagespeed' || cmd === '/psi') {
+        const target = query || 'https://wjunior.dev.br'
+        const normalizedTarget = target.startsWith('http') ? target : `https://${target}`
+        await this.reply(
+          chatId,
+          `⚡ Executando auditoria Lighthouse para *${normalizedTarget}* (aguarde ~10s)...`,
+          msg.message_id,
+          threadId,
+        )
+
+        try {
+          const audit = await this.pageSpeed.auditSite(normalizedTarget, 'mobile')
+          if (audit.error) {
+            return this.reply(
+              chatId,
+              `❌ Erro na auditoria do PageSpeed: ${audit.error}`,
+              msg.message_id,
+              threadId,
+            )
+          }
+
+          const badge = (s: number) => (s >= 90 ? '🟢' : s >= 50 ? '🟡' : '🔴')
+          let msgText = `⚡ *Google PageSpeed Insights — ${audit.cleanName}*\n`
+          msgText += `_Estratégia: Mobile (Lighthouse)_\n\n`
+          msgText += `📊 *Scores Lighthouse:*\n`
+          msgText += `• Performance: ${badge(audit.scores.performance)} *${audit.scores.performance}/100*\n`
+          msgText += `• Acessibilidade: ${badge(audit.scores.accessibility)} *${audit.scores.accessibility}/100*\n`
+          msgText += `• Melhores Práticas: ${badge(audit.scores.bestPractices)} *${audit.scores.bestPractices}/100*\n`
+          msgText += `• SEO: ${badge(audit.scores.seo)} *${audit.scores.seo}/100*\n\n`
+
+          msgText += `⏱️ *Core Web Vitals & Métricas:*\n`
+          msgText += `• *LCP (Maior Conteúdo)*: ${audit.metrics.lcp}\n`
+          msgText += `• *FCP (Primeiro Conteúdo)*: ${audit.metrics.fcp}\n`
+          msgText += `• *CLS (Estabilidade Visual)*: ${audit.metrics.cls}\n`
+          msgText += `• *TBT (Bloqueio de Thread)*: ${audit.metrics.tbt}\n`
+          msgText += `• *Peso da Página*: ${audit.metrics.totalByteWeight}\n`
+
+          return this.reply(chatId, msgText, msg.message_id, threadId)
+        } catch (err: unknown) {
+          const errorMsg = err instanceof Error ? err.message : String(err)
+          return this.reply(
+            chatId,
+            `❌ Erro ao executar PageSpeed: ${errorMsg}`,
+            msg.message_id,
+            threadId,
+          )
+        }
       }
 
       if (cmd === '/trace') {

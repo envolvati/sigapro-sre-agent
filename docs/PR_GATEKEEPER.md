@@ -42,7 +42,7 @@ A IA audita o PR com base nos seguintes pilares:
 ### 3.1 Webhook do Repositório
 No repositório do GitHub (`sigapro`, `sigapro-api` ou `envolvati-payments-gateway`):
 1. Vá em **Settings** → **Webhooks** → **Add webhook**.
-2. **Payload URL:** `https://sre.sigapro.com/webhooks/github` (ou o IP/porta do agente `http://<HOST>:3030/webhooks/github`).
+2. **Payload URL:** `https://sre.domain.com/webhooks/github` (ou o IP/porta do agente `http://<HOST>:3030/webhooks/github`).
 3. **Content type:** `application/json`.
 4. **Which events would you like to trigger this webhook?**
    * Selecione **Let me select individual events**.
