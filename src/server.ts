@@ -12,6 +12,8 @@ import { DeploymentsCollector } from 'collectors/deployments'
 import { TelegramListener } from './listeners/telegram.listener'
 import { AIGatewayClient, type PRAuditInput } from './ai/gateway'
 import { TelegramNotifier } from './notifiers/telegram'
+import { SearchConsoleCollector } from 'collectors/search-console'
+import { PageSpeedCollector } from 'collectors/pagespeed'
 
 const app = Fastify({ logger: true })
 
@@ -22,7 +24,8 @@ const auditPullRequest = new AuditPullRequestUseCase()
 const telegramListener = new TelegramListener()
 const aiGateway = new AIGatewayClient()
 const telegramNotifier = new TelegramNotifier()
-
+const searchConsole = SearchConsoleCollector.getInstance()
+const pageSpeed = PageSpeedCollector.getInstance()
 // Healthcheck com probe ativo em todos os monitores
 app.get('/health', async (_req, reply) => {
   const report = await checkMonitorsHealth()
@@ -291,6 +294,68 @@ app.post('/analyze/pr', async (req, reply) => {
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err)
     return reply.status(500).send({ error: errorMsg })
+  }
+})
+
+// Endpoint público para fornecer telemetria agregada de SEO para portfólio e dashboards
+app.get('/api/public/seo-stats', async (req, reply) => {
+  reply.header('Access-Control-Allow-Origin', '*')
+  reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  reply.header('Cache-Control', 'public, max-age=3600')
+
+  try {
+    const query = req.query as { days?: string; refresh?: string } | undefined
+    const days = query?.days ? Math.min(Math.max(parseInt(query.days, 10) || 30, 7), 90) : 30
+    const forceRefresh = query?.refresh === 'true' || query?.refresh === '1'
+
+    const stats = await searchConsole.getPortfolioSummary(days, forceRefresh)
+    return reply.status(200).send(stats)
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    app.log.error({ err }, '[SEO Stats] Falha ao coletar métricas do Search Console')
+    return reply.status(500).send({
+      error: 'Falha ao coletar dados do Google Search Console',
+      message: errorMsg,
+    })
+  }
+})
+
+// Endpoint de diagnóstico do status de indexação dos domínios monitorados
+app.get('/api/seo/health', async (_req, reply) => {
+  reply.header('Access-Control-Allow-Origin', '*')
+  try {
+    const reports = await searchConsole.checkMonitoredIndexStatus()
+    const hasFailures = reports.some(
+      r => r.verdict === 'FAIL' || r.coverageState.toLowerCase().includes('unknown'),
+    )
+    return reply.status(hasFailures ? 207 : 200).send({
+      timestamp: new Date().toISOString(),
+      monitoredUrls: reports,
+    })
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    return reply.status(500).send({ error: errorMsg })
+  }
+})
+
+// Endpoint público para fornecer telemetria de performance/Lighthouse para portfólio
+app.get('/api/public/pagespeed-stats', async (req, reply) => {
+  reply.header('Access-Control-Allow-Origin', '*')
+  reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  reply.header('Cache-Control', 'public, max-age=21600')
+
+  try {
+    const query = req.query as { refresh?: string } | undefined
+    const forceRefresh = query?.refresh === 'true' || query?.refresh === '1'
+    const stats = await pageSpeed.getPortfolioPageSpeedSummary(forceRefresh)
+    return reply.status(200).send(stats)
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    app.log.error({ err }, '[PageSpeed Stats] Falha ao executar auditorias Lighthouse')
+    return reply.status(500).send({
+      error: 'Falha ao executar auditoria Google PageSpeed',
+      message: errorMsg,
+    })
   }
 })
 

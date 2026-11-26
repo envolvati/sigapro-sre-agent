@@ -18,6 +18,9 @@ export interface CoolifyWebhookPayload {
   commit?: string
   commit_message?: string
   commit_author?: string
+  repository?: string
+  pull_request_number?: number
+  run_url?: string
 }
 
 export class HandleCoolifyWebhookUseCase {
@@ -87,6 +90,10 @@ export class HandleCoolifyWebhookUseCase {
       text += `\n🤖 *Copie para o seu Harness / Agente Local:*\n`
       text += `\`\`\`markdown\n${triage.harnessPrompt}\n\`\`\`\n`
 
+      if (dto.repository && dto.pull_request_number) {
+        await this.syncPullRequestPreviewComment(dto)
+      }
+
       await this.telegram.sendMessage(text, {
         threadId: env.TELEGRAM_RELEASES_THREAD_ID,
       })
@@ -118,6 +125,11 @@ export class HandleCoolifyWebhookUseCase {
       if (dto.fqdn) {
         const url = dto.fqdn.startsWith('http') ? dto.fqdn : `https://${dto.fqdn}`
         text += `🔗 *URL:* [${url}](${url})\n`
+      }
+
+      if (dto.repository && dto.pull_request_number) {
+        text += `🔀 *Pull Request:* [#${dto.pull_request_number}](https://github.com/${dto.repository}/pull/${dto.pull_request_number})\n`
+        await this.syncPullRequestPreviewComment(dto)
       }
 
       await this.telegram.sendMessage(text, {
@@ -153,6 +165,105 @@ export class HandleCoolifyWebhookUseCase {
       return data.logs ?? ''
     } catch {
       return ''
+    }
+  }
+
+  private async syncPullRequestPreviewComment(dto: CoolifyWebhookPayload): Promise<void> {
+    if (!env.GITHUB_TOKEN || !dto.repository || !dto.pull_request_number) return
+
+    const repo = dto.repository
+    const prNumber = dto.pull_request_number
+    const commit = dto.commit ? dto.commit.slice(0, 7) : 'HEAD'
+    const previewUrl = dto.fqdn || dto.deployment_url || 'https://envolvati.com'
+    const runUrl = dto.run_url || `https://github.com/${repo}/actions`
+    const isSuccess = dto.event === 'deployment_success' || dto.success === true
+    const statusText = isSuccess
+      ? 'Build: Success ✅<br/>Deployment: Success ✅'
+      : 'Build: Failed ❌<br/>Deployment: Failed ❌'
+    const now = new Date().toISOString()
+    const marker = '<!-- CLOUDFLARE_PREVIEW_TABLE -->'
+
+    const newRow = `    <tr>
+      <td>${statusText}<br/><a href="${runUrl}">View logs ↗</a></td>
+      <td><a href="${previewUrl}">${previewUrl}</a></td>
+      <td><code>${commit}</code></td>
+      <td>${now}</td>
+      <td><a href="${runUrl}">View run details ↗</a></td>
+    </tr>`
+
+    try {
+      const listUrl = `https://api.github.com/repos/${repo}/issues/${prNumber}/comments`
+      const res = await fetch(listUrl, {
+        headers: {
+          Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'sigapro-sre-agent',
+        },
+      })
+
+      if (!res.ok) return
+      const comments = (await res.json()) as Array<{ id: number; body?: string }>
+      const existing = comments.find(c => typeof c.body === 'string' && c.body.includes(marker))
+
+      if (existing) {
+        let updatedBody = existing.body || ''
+        if (updatedBody.includes('<tbody>')) {
+          updatedBody = updatedBody.replace('<tbody>', `<tbody>\n${newRow}`)
+        } else {
+          updatedBody += `\n${newRow}`
+        }
+        updatedBody = updatedBody.replace(
+          /### Preview URL:[^\n]+/,
+          `### Preview URL: ${previewUrl} (commit ${commit})`,
+        )
+
+        await fetch(`https://api.github.com/repos/${repo}/issues/comments/${existing.id}`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+            'User-Agent': 'sigapro-sre-agent',
+          },
+          body: JSON.stringify({ body: updatedBody }),
+        })
+      } else {
+        const body = `## 🚀 Deploying Preview to Cloudflare 🚀
+${marker}
+### Preview URL: ${previewUrl} (commit ${commit})
+###### This URL reflects your latest Preview deployment managed by SRE Agent
+
+<!-- Preview Deployments -->
+### Preview Deployments by commit
+
+<table>
+  <thead>
+    <tr>
+      <th align="left">Status</th>
+      <th align="left">Deployment URL</th>
+      <th align="left">Commit</th>
+      <th align="left">Updated (UTC)</th>
+      <th align="left">See this deployment's details</th>
+    </tr>
+  </thead>
+  <tbody>
+${newRow}
+  </tbody>
+</table>`
+
+        await fetch(`https://api.github.com/repos/${repo}/issues/${prNumber}/comments`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+            'User-Agent': 'sigapro-sre-agent',
+          },
+          body: JSON.stringify({ body }),
+        })
+      }
+    } catch (err: unknown) {
+      console.warn('[CoolifyWebhook] Failed to sync GitHub PR preview comment:', err)
     }
   }
 }

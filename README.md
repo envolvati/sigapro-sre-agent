@@ -71,6 +71,10 @@ O agente executa um **Listener Long-Polling nativo** (zero necessidade de webhoo
 | **`/trace <trace_id>`** | Busca a árvore de spans no Grafana Tempo e gera a Análise de Causa Raiz (**RCA**) via IA, identificando o span culpado por timeout ou erro. | `/trace 4bf92f3577b34da6a3ce929d0e0e4736` |
 | **`/digest`** | Dispara sob demanda o **Daily SRE Digest** com o resumo executivo das últimas 24h (volume, uptime, p95 e anomalias). | `/digest` |
 | **`/health`** *(ou `/status`)* | Executa um probe em tempo real medindo a conectividade e latência interna de cada monitor (Prometheus, Tempo, Loki e OmniRoute). | `/health` |
+| **`/seo`** *(ou `/gsc`)* | **Telemetria Orgânica & SEO**: consolida impressões, cliques, CTR e top termos de busca do Google Search Console em todos os 4 domínios (`sigapro.com`, `envolvati.com`, `wjunior.dev.br`, `ofertyza.com.br`). | `/seo` |
+| **`/deploys`** *(ou `/releases`)* | Histórico dos últimos deploys realizados pelo Coolify com status e autor. | `/deploys` |
+| **`/prs`** *(ou `/pulls`)* | Lista PRs abertos no backend, frontend e payments com status do PR Gatekeeper. | `/prs` |
+| **`/pr <repo> <numero>`** | Raio-X e re-auditoria de qualidade de um PR com checklist de homologação. | `/pr api 117` |
 | **`/help`** *(ou `/start`)* | Exibe o menu formatado com a lista de comandos e exemplos no chat. | `/help` |
 
 ---
@@ -96,7 +100,8 @@ pnpm analyze <TRACE_ID>
 - `POST /webhooks/grafana` — Receptor de alertas configurável no **Grafana Alerting** para disparar análises automáticas de incidentes.
 - `POST /webhooks/glitchtip` — Receptor de alertas proativos de crash vindos do **GlitchTip** com análise imediata de causa raiz pela IA e notificação no Telegram.
 - `POST /analyze/trace/:traceId` — Endpoint REST para solicitar análise de traces por outros microsserviços.
-
+- `GET /api/public/seo-stats` — Endpoint público com CORS liberado para fornecer telemetria agregada de SEO em JSON para o portfólio (`wjunior.dev.br`) e dashboards externos (com cache em memória de 1h). Suporta `?days=30` e `?refresh=true`.
+- `GET /api/seo/health` — Diagnóstico do status de indexação dos domínios monitorados via Google URL Inspection API.
 ---
 
 ## 🚀 Como Rodar Localmente

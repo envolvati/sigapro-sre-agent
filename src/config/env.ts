@@ -36,6 +36,11 @@ const envSchema = z.object({
   // GitHub Integration (PR Gatekeeper)
   GITHUB_TOKEN: z.string().optional(),
   GITHUB_WEBHOOK_SECRET: z.string().optional(),
+
+  // Google APIs (Search Console & PageSpeed Insights)
+  GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
+  GOOGLE_API_KEY: z.string().optional(),
+  PAGESPEED_API_KEY: z.string().optional(),
 })
 
 export type Env = z.infer<typeof envSchema>
@@ -62,4 +67,7 @@ export const env = envSchema.parse({
   COOLIFY_API_TOKEN: process.env.COOLIFY_API_TOKEN,
   GITHUB_TOKEN: process.env.GITHUB_TOKEN,
   GITHUB_WEBHOOK_SECRET: process.env.GITHUB_WEBHOOK_SECRET,
+  GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+  GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+  PAGESPEED_API_KEY: process.env.PAGESPEED_API_KEY || process.env.GOOGLE_API_KEY,
 })

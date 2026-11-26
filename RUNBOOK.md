@@ -66,13 +66,69 @@ flowchart LR
 | **`PROMETHEUS_URL`** | Sim | `http://prometheus:9090` | Acesso interno ao Prometheus na rede `docker`. |
 | **`TEMPO_URL`** | Sim | `http://tempo:3200` | Acesso interno ao Grafana Tempo na rede `docker`. |
 | **`LOKI_URL`** | Sim | `http://loki:3100` | Acesso interno ao Grafana Loki na rede `docker`. |
-| **`PAYMENTS_GATEWAY_URL`** | **SIM** | `https://payments.gateway.com` | URL do gateway de pagamentos para aferição do `/health` e workers. |
+| **`PAYMENTS_GATEWAY_URL`** | **SIM** | `https://payments.gateway.com` | URL do gateway de pagamentos (produção) para `/health` e workers. |
+| **`PAYMENTS_GATEWAY_HML_URL`** | Não | `https://hml-payments.gateway.com` | URL do gateway de pagamentos (homologação). |
 | **`SIGAPRO_API_URL`** | **SIM** | `https://api.gateway.com` | URL do backend da API SigaPro para health check. |
 | **`SIGAPRO_APP_URL`** | **SIM** | `https://app.gateway.com` | URL do frontend SigaPro para checagem de uptime. |
 | **`TELEGRAM_BOT_TOKEN`** | Sim | `8198199909:...` | Token do bot emitido pelo @BotFather. |
 | **`TELEGRAM_CHAT_ID`** | Sim | `-1000000000000` | ID do grupo/canal do Telegram. |
-| **`TELEGRAM_THREAD_ID`** | Opcional | `14141` | ID do Tópico do fórum no Telegram (se aplicável). |
+| **`TELEGRAM_THREAD_ID`** | Opcional | `14141` | ID do Tópico operacional no Telegram (se aplicável). |
+| **`TELEGRAM_RELEASES_THREAD_ID`** | Não | `284` | ID do Tópico de Releases no Telegram para notificações de deploy/PR. |
+| **`COOLIFY_API_URL`** | Não | `https://infra.sigapro.com/api/v1` | URL base da API REST do Coolify. |
+| **`COOLIFY_API_TOKEN`** | Opcional | `3|coolify_token...` | Token Bearer do Coolify para histórico 24h e busca de logs de deploy. |
+| **`GITHUB_TOKEN`** | Opcional | `ghp_...` | Personal Access Token do GitHub para PR Gatekeeper e comentários de Preview. |
+| **`GITHUB_WEBHOOK_SECRET`** | Opcional | `segredo_hmac` | Segredo para validar assinatura HMAC SHA-256 do webhook do GitHub. |
+| **`GOOGLE_APPLICATION_CREDENTIALS`** | Opcional | *(ver abaixo)* | Credenciais da Service Account do Google Cloud para Google Search Console. |
+| **`PAGESPEED_API_KEY`** | Opcional | `AIzaSy...` | Chave de API do Google Cloud para o Google PageSpeed Insights v5. |
+| **`GOOGLE_API_KEY`** | Opcional | `AIzaSy...` | Alias/fallback da chave de API Google caso `PAGESPEED_API_KEY` não seja informada. |
 
+---
+
+### 🔑 Guia de Configuração das Novas Variáveis Google
+
+#### 1. `GOOGLE_APPLICATION_CREDENTIALS` (Google Search Console / SEO)
+Usada pelo coletor `SearchConsoleCollector` para buscar impressões, cliques, CTR, posição média e termos ranqueados via `/seo` (Telegram) e `GET /api/public/seo-stats`.
+
+* **O que é o valor:** A credencial JSON de uma **Service Account** do Google Cloud Platform (GCP).
+* **Como obter:**
+  1. No [Google Cloud Console](https://console.cloud.google.com), crie ou selecione o projeto.
+  2. Em **APIs e Serviços** ➔ **Biblioteca**, pesquise por **Google Search Console API** (antiga Webmasters API) e clique em **Ativar**.
+  3. Em **IAM e Administração** ➔ **Contas de Serviço**, clique em **Criar conta de serviço** (ex.: `sre-agent@seu-projeto.iam.gserviceaccount.com`).
+  4. Clique na conta de serviço criada ➔ aba **Chaves** ➔ **Adicionar Chave** ➔ **Criar nova chave** ➔ selecione **JSON** e baixe o arquivo.
+  5. Acesse o [Google Search Console](https://search.google.com/search-console) em cada domínio monitorado (`sigapro.com`, `envolvati.com`, etc.):
+     * Vá em **Configurações** ➔ **Usuários e permissões** ➔ **Adicionar usuário**.
+     * Insira o e-mail da conta de serviço (`sre-agent@...`) com permissão de **Leitor** (Read).
+* **Como preencher no Coolify (3 opções suportadas pelo agente):**
+  * **Opção 1 (Recomendada no Coolify — Base64):**
+    Gere a string em base64 do JSON no terminal:
+    ```bash
+    base64 -i credentials.json | tr -d '\n'
+    # No Linux: base64 -w 0 credentials.json
+    ```
+    Cole a linha única gerada no valor da variável `GOOGLE_APPLICATION_CREDENTIALS` no painel do Coolify. O agente decodifica automaticamente!
+  * **Opção 2 (JSON inline direto):**
+    Cole o conteúdo raw do arquivo JSON diretamente no valor da variável no Coolify.
+  * **Opção 3 (Montagem de volume):**
+    Monte um persistent storage / file mount no Coolify apontando para `/app/credentials/gsc-credentials.json` e defina `GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/gsc-credentials.json`.
+
+---
+
+#### 2. `PAGESPEED_API_KEY` ou `GOOGLE_API_KEY` (Opcional se Service Account estiver configurada!)
+Usada pelo coletor `PageSpeedCollector` para auditar notas do Lighthouse (0–100) e Core Web Vitals (LCP, FCP, CLS, TBT) via `/pagespeed` (Telegram) e `GET /api/public/pagespeed-stats`.
+
+> 💡 **Você NÃO precisa criar uma API Key se ativou a PageSpeed API no mesmo projeto da Service Account!**
+> O `PageSpeedCollector` reutiliza automaticamente a mesma Service Account configurada em `GOOGLE_APPLICATION_CREDENTIALS` através de autenticação OAuth2 (`Authorization: Bearer <token>`). Portanto, ao ativar a **PageSpeed Insights API** no mesmo projeto do Google Cloud, tudo já funciona sem nenhuma variável extra.
+
+* **Quando usar `PAGESPEED_API_KEY`:** Apenas se você preferir não usar a Service Account para o PageSpeed ou quiser usar um projeto GCP separado com uma Chave de API simples.
+* **Como obter (caso opte por API Key):**
+  1. No [Google Cloud Console](https://console.cloud.google.com), vá em **APIs e Serviços** ➔ **Biblioteca**.
+  2. Pesquise por **PageSpeed Insights API** e clique em **Ativar**.
+  3. Vá em **APIs e Serviços** ➔ **Credenciais** ➔ clique em **Criar Credenciais** ➔ **Chave de API**.
+  4. *(Opcional, mas recomendado)* Restrinja a chave para a "PageSpeed Insights API".
+* **Como preencher no Coolify:**
+  ```env
+  PAGESPEED_API_KEY=AIzaSy...
+  ```
 ---
 
 ## 🚀 Como Configurar no Coolify
