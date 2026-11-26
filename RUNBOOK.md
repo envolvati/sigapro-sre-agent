@@ -113,21 +113,22 @@ Usada pelo coletor `SearchConsoleCollector` para buscar impressões, cliques, CT
 
 ---
 
-#### 2. `PAGESPEED_API_KEY` ou `GOOGLE_API_KEY` (Google PageSpeed Insights)
+#### 2. `PAGESPEED_API_KEY` ou `GOOGLE_API_KEY` (Opcional se Service Account estiver configurada!)
 Usada pelo coletor `PageSpeedCollector` para auditar notas do Lighthouse (0–100) e Core Web Vitals (LCP, FCP, CLS, TBT) via `/pagespeed` (Telegram) e `GET /api/public/pagespeed-stats`.
 
-* **O que é o valor:** Uma API Key simples gerada no Google Cloud Platform.
-* **Como obter:**
+> 💡 **Você NÃO precisa criar uma API Key se ativou a PageSpeed API no mesmo projeto da Service Account!**
+> O `PageSpeedCollector` reutiliza automaticamente a mesma Service Account configurada em `GOOGLE_APPLICATION_CREDENTIALS` através de autenticação OAuth2 (`Authorization: Bearer <token>`). Portanto, ao ativar a **PageSpeed Insights API** no mesmo projeto do Google Cloud, tudo já funciona sem nenhuma variável extra.
+
+* **Quando usar `PAGESPEED_API_KEY`:** Apenas se você preferir não usar a Service Account para o PageSpeed ou quiser usar um projeto GCP separado com uma Chave de API simples.
+* **Como obter (caso opte por API Key):**
   1. No [Google Cloud Console](https://console.cloud.google.com), vá em **APIs e Serviços** ➔ **Biblioteca**.
   2. Pesquise por **PageSpeed Insights API** e clique em **Ativar**.
   3. Vá em **APIs e Serviços** ➔ **Credenciais** ➔ clique em **Criar Credenciais** ➔ **Chave de API**.
-  4. *(Opcional, mas recomendado)* Restrinja a chave para permitir chamadas apenas à "PageSpeed Insights API".
+  4. *(Opcional, mas recomendado)* Restrinja a chave para a "PageSpeed Insights API".
 * **Como preencher no Coolify:**
-  * Adicione nas Environment Variables do Coolify:
-    ```env
-    PAGESPEED_API_KEY=AIzaSyD-ExemploDeChaveDoGooglePageSpeed...
-    ```
-  * *Nota:* A API do PageSpeed funciona até mesmo sem chave para requisições esparsas, porém fica sujeita a rate limits estritos de IP do Google. Com a chave configurada, a cota gratuita é de 25.000 requisições diárias.
+  ```env
+  PAGESPEED_API_KEY=AIzaSy...
+  ```
 ---
 
 ## 🚀 Como Configurar no Coolify

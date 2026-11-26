@@ -131,7 +131,9 @@ export class SearchConsoleCollector {
     )
   }
 
-  private async getAccessToken(): Promise<string> {
+  public async getAccessToken(
+    scope = 'https://www.googleapis.com/auth/webmasters.readonly openid',
+  ): Promise<string> {
     const now = Math.floor(Date.now() / 1000)
 
     if (this.cachedToken && this.cachedToken.expiresAt > now + 300) {
@@ -142,7 +144,7 @@ export class SearchConsoleCollector {
     const header = { alg: 'RS256', typ: 'JWT' }
     const claim = {
       iss: key.client_email,
-      scope: 'https://www.googleapis.com/auth/webmasters.readonly',
+      scope,
       aud: 'https://oauth2.googleapis.com/token',
       exp: now + 3600,
       iat: now,

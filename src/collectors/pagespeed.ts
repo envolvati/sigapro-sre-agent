@@ -1,4 +1,5 @@
 import { env } from 'config/env'
+import { SearchConsoleCollector } from 'collectors/search-console'
 
 export interface PageSpeedScores {
   performance: number
@@ -97,12 +98,24 @@ export class PageSpeedCollector {
     apiUrl.searchParams.append('category', 'best-practices')
     apiUrl.searchParams.append('category', 'seo')
 
+    const headers: Record<string, string> = {}
+
     if (apiKey) {
       apiUrl.searchParams.set('key', apiKey)
+    } else {
+      try {
+        const token = await SearchConsoleCollector.getInstance().getAccessToken()
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
+      } catch {
+        // Sem Service Account configurada; segue sem autenticação
+      }
     }
 
     try {
       const res = await fetch(apiUrl.toString(), {
+        headers,
         signal: AbortSignal.timeout(45_000), // Timeout de 45 segundos para testes Lighthouse
       })
 
