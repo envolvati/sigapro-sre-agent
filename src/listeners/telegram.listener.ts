@@ -218,7 +218,7 @@ export class TelegramListener {
 • \`/health\` (ou \`/status\`) — Testa a conectividade interna e a latência de rede da stack de observabilidade (Prometheus, Tempo, Loki e OmniRoute).
 
 📈 *SEO & Performance Web*
-• \`/seo\` (ou \`/gsc\`) — Resumo de SEO e telemetria orgânica no Google (impressões, cliques e termos de busca nos 4 domínios).
+• \`/seo [dominio]\` (ou \`/gsc\`) — Resumo de SEO no Google Search Console (geral ou filtrado por domínio, ex: \`/seo ofertas\` ou \`/seo ofertyza.com.br\`).
 • \`/pagespeed [url]\` (ou \`/psi\`) — Auditoria Lighthouse e Core Web Vitals (Scores 0-100, LCP, CLS e peso da página).`
         return this.reply(chatId, helpMsg, msg.message_id, threadId)
       }
@@ -538,15 +538,64 @@ export class TelegramListener {
       }
 
       if (cmd === '/seo' || cmd === '/gsc') {
-        await this.reply(
-          chatId,
-          '🔍 Consultando telemetria orgânica no Google Search Console...',
-          msg.message_id,
-          threadId,
-        )
+        const filterTerm = query
+          ? query.toLowerCase().replace('https://', '').replace('http://', '').replace(/\/$/, '')
+          : ''
+        const waitingMsg = filterTerm
+          ? `🔍 Consultando telemetria orgânica no Google Search Console para *${filterTerm}*...`
+          : '🔍 Consultando telemetria orgânica no Google Search Console...'
+
+        await this.reply(chatId, waitingMsg, msg.message_id, threadId)
 
         try {
           const stats = await this.searchConsole.getPortfolioSummary(30)
+          const matchingSites = filterTerm
+            ? stats.sites.filter(
+                s =>
+                  s.cleanName.toLowerCase().includes(filterTerm) ||
+                  s.siteUrl.toLowerCase().includes(filterTerm),
+              )
+            : stats.sites
+
+          if (filterTerm && matchingSites.length === 0) {
+            const available = stats.sites.map(s => `• \`${s.cleanName}\``).join('\n')
+            return this.reply(
+              chatId,
+              `❌ Nenhum domínio encontrado com o filtro *"${query}"*.\n\n🌐 *Domínios monitorados (${stats.summary.totalSites}):*\n${available}\n\n💡 _Dica: use /seo sem argumentos para o resumo geral de todos os sites._`,
+              msg.message_id,
+              threadId,
+            )
+          }
+
+          // Visualização detalhada de um único domínio
+          if (filterTerm && matchingSites.length === 1) {
+            const s = matchingSites[0]
+            let msgText = `📈 *Google Search Console — ${s.cleanName}*\n`
+            msgText += `_Últimos ${stats.periodDays} dias_\n\n`
+            msgText += `📊 *Métricas:*\n`
+            msgText += `• Impressões: *${s.impressions}*\n`
+            msgText += `• Cliques: *${s.clicks}*\n`
+            msgText += `• CTR Médio: *${s.ctr}%*\n`
+            msgText += `• Posição Média: *#${s.avgPosition}*\n\n`
+
+            if (s.topQueries && s.topQueries.length > 0) {
+              msgText += `🔍 *Principais Termos de Busca:*\n`
+              for (const q of s.topQueries) {
+                msgText += `• _"${q.query}"_\n`
+                msgText += `   ↳ ${q.impressions} imp | ${q.clicks} clicks | CTR: ${q.ctr}% | pos: #${q.position}\n`
+              }
+            } else {
+              msgText += `ℹ️ _Nenhuma query registrada para este domínio nos últimos ${stats.periodDays} dias._\n`
+            }
+
+            if (s.error) {
+              msgText += `\n⚠️ _Aviso: ${s.error}_\n`
+            }
+
+            return this.reply(chatId, msgText, msg.message_id, threadId)
+          }
+
+          // Visualização de portfólio consolidado (ou múltiplos domínios correspondentes)
           let msgText = `📈 *Google Search Console — Últimos ${stats.periodDays} dias*\n\n`
           msgText += `🌐 *Visão Geral:*\n`
           msgText += `• Domínios Monitorados: *${stats.summary.totalSites}*\n`
@@ -555,7 +604,7 @@ export class TelegramListener {
           msgText += `• CTR Médio: *${stats.summary.overallCtr}%*\n\n`
 
           msgText += `📊 *Por Domínio:*\n`
-          for (const s of stats.sites) {
+          for (const s of matchingSites) {
             msgText += `• *${s.cleanName}* (${s.impressions} imp | ${s.clicks} clicks | pos: #${s.avgPosition})\n`
             if (s.topQueries && s.topQueries.length > 0) {
               for (const q of s.topQueries.slice(0, 3)) {

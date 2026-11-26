@@ -11,7 +11,7 @@ Envie qualquer um dos comandos abaixo diretamente no chat ou tópico configurado
 ### 🌐 SEO & Performance Web
 | Comando | Alias | Descrição |
 | :--- | :--- | :--- |
-| `/seo` | `/gsc` | Puxa o resumo do Google Search Console dos 4 domínios (`sigapro.com`, `envolvati.com`, `wjunior.dev.br`, `ofertyza.com.br`) com impressões, cliques e termos no Top 3/Top 5 do Google. |
+| `/seo [dominio]` | `/gsc` | Telemetria do Google Search Console. Sem parâmetros mostra o portfólio consolidado de todos os domínios. Passando o domínio (ex.: `/seo ofertyza.com.br` ou `/seo envolvati`), exibe raio-x detalhado com até 10 principais termos ranqueados, impressões, cliques, CTR e posição. |
 | `/pagespeed [url]` | `/psi` | Executa auditoria do Google PageSpeed/Lighthouse em tempo real com Scores (0-100) e Core Web Vitals (LCP, CLS, FCP, TBT e peso da página). Se a URL for omitida, testa `wjunior.dev.br`. |
 ### 📦 Aplicações & Microsserviços
 | Comando | Alias | Descrição |
